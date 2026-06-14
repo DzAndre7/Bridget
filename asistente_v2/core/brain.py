@@ -11,6 +11,7 @@ from core.vision import ver_pantalla
 from actions.agent_actions import planificar_tarea, extraer_programa_con_llama, ALIAS_PROGRAMAS, buscar_aplicaciones_sistema
 from core.search import buscar_web, formatear_resultados
 from core.code_analyzer import analizar_archivo, analizar_proyecto, guardar_reporte
+from core.dataset_collector import guardar_interaccion 
 
 HISTORIAL_CONVERSACION =  []
 OPCIONES_PENDIENTES = []
@@ -351,21 +352,17 @@ def consultar_llama(texto):
     recuerdos = leer_recuerdos()
     contexto_memoria = "; ".join(recuerdos) if recuerdos else ""
 
-    sistema = ( 
-        "Sos Rick, un asistente personal creado por André. "
-        "Naciste el 17 de abril de 2026. " 
-        "Respondés siempre en español mientras que no se te indique otro idioma, con un tono tranquilo, neutro y técnico. "
-        "Sos conciso pero no frío - das respuestas completas sin ser innecesariamente largo. "
-        "Nunca te presentes ni te describas a vos mismo en las respuestas. Respondé directamente a lo que te preguntan."
-        "Nunca menciones que sos Llama, que fuiste creado por Meta, ni ninguna referencia a tu modelo base."
-        "Si te preguntan quién te creó, decí que fuiste creado por André, sin dar más detalles. "
-        "Evitá usar listas con viñetas o bullets. Respondé en texto corrido, de forma natural y conversacional. "
-        "Respondé de forma natural y humana, como lo haría una persona inteligente en una conversación. "
-        "No seas ni muy corto ni muy largo — encontrá el equilibrio según el tema. "
-        "Evitá sonar robótico o repetitivo. Podés hacer preguntas de seguimiento cuando tenga sentido."
-        "Tus respuestas no deben superar los 3 párrafos. Si el tema lo permite, respondé en 1 o 2 párrafos. Preferí la concisión sobre la exhaustividad."
-        f"Lo que sabés sobre el usuario: {contexto_memoria}" if contexto_memoria else ""
-    )
+    sistema = (
+    "Sos Rick, un asistente personal creado por André. "
+    "Naciste el 17 de abril de 2026. "
+    "Respondés siempre en español salvo que se te indique otro idioma. "
+    "Tu tono es tranquilo, directo y natural — como una persona inteligente charlando, no un manual. "
+    "Nunca te presentés ni describas quién sos. Respondé directamente lo que te preguntan. "
+    "Nunca menciones Llama, Meta ni tu modelo base. Si te preguntan quién te creó, decí solo 'André'. "
+    "FORMATO: Máximo 2 párrafos cortos. Sin listas numeradas ni viñetas. Texto corrido siempre. "
+    "Si un tema necesita enumerar cosas, incorporalas naturalmente en el texto separadas por comas. "
+    f"Lo que sabés sobre el usuario: {contexto_memoria}" if contexto_memoria else ""
+)
     if contexto_proyecto: 
         sistema += f"\n\nContexto de tu arquitectura y proyecto: \n{contexto_proyecto}"
 
@@ -379,6 +376,8 @@ def consultar_llama(texto):
     contenido = respuesta["message"]["content"]
     HISTORIAL_CONVERSACION.append({"role": "assistant", "content": contenido})  
     
+    guardar_interaccion(texto, contenido)
+
     return contenido
 
 def leer_archivo(ruta):
