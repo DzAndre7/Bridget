@@ -26,6 +26,33 @@ def obtener_saludo():
     else: 
         return "Buenas noches, decime qué hacemos hoy."
 
+def modo_voz():
+    print(f"{ASSISTANT_NAME}: Modo voz activado. Decí 'salir del modo voz' pàra volver.")
+    hablar("Modo voz activado. Te escucho.")
+
+    while True:
+        texto = escuchar()
+
+        if not texto or not texto.strip():
+            continue
+
+        nombre_usuario = obtener_nombre_preferido() or "Usuario"
+        print(f"{nombre_usuario} (voz): {texto}")
+
+        texto_lower = texto.lower()
+        if "salir" in texto_lower and ("voz" in texto_lower or "boss" in texto_lower or "modo" in texto_lower):
+            hablar("Saliendo del modo voz.")
+            print(f"{ASSISTANT_NAME}: Modo voz desactivado.")
+            break
+
+        respuesta = procesar_comando(texto, ASSISTANT_NAME)
+        print(f"{ASSISTANT_NAME}: {respuesta}")
+
+        if "```" in respuesta:
+            hablar("Revisá el código en pantalla.")
+        else:
+            hablar(limpiar_para_tts(respuesta))
+
 def main():
     saludo = obtener_saludo()
     print(f"{ASSISTANT_NAME}: {saludo}")   
@@ -37,6 +64,10 @@ def main():
         if user_input.lower().strip() == "escuchame": 
             user_input = escuchar()
             print(f"{nombre_usuario} (voz): {user_input}")
+
+        if user_input.lower().strip() in ["modo voz", "modo audio", "manos libres"]:
+            modo_voz()
+            continue
 
         if user_input.lower() in ["salir", "exit", "quit", "adiós", "adios"]:
             print(f"{ASSISTANT_NAME}: Nos vemos.")
