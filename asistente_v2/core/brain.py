@@ -12,6 +12,7 @@ from actions.agent_actions import planificar_tarea, extraer_programa_con_llama, 
 from core.search import buscar_web, formatear_resultados
 from core.code_analyzer import analizar_archivo, analizar_proyecto, guardar_reporte
 from core.dataset_collector import guardar_interaccion 
+from core.code_reviewer import revisar_codigo
 
 HISTORIAL_CONVERSACION =  []
 OPCIONES_PENDIENTES = []
@@ -539,8 +540,16 @@ def procesar_comando(texto, assistant_name):
             contenido = leer_archivo(ruta)
             if contenido:
                 codigo_mejorado = consultar_llama(f"Reescribí este código Python completo con mejoras. Tu respuesta debe empezar DIRECTAMENTE con 'import' o 'def' o '#'. CERO explicaciones, CERO texto antes o después del código:\n\n{contenido}")
-                print(f"\n--- CÓDIGO MEJORADO ---\n{codigo_mejorado}\n---")
-                confirmacion = input("¿Querés guardar el código mejorado? (si/no): ")
+                print(f"\n--- VERSIÓN DE DOLPHIN ---\n{codigo_mejorado}\n---")
+
+                print("\nConsultando al revisor experto...")
+                revision = revisar_codigo(codigo_mejorado, objetivo="revisar esta mejora y señalar errores o mejoras adicionales")
+                if revision:
+                    print(f"\n--- REVISIÓN DEL EXPERTO ---\n{revision}\n---")
+                else:
+                    print("\n(El revisor externo no está disponible, seguí con la versión de dolphin.)")
+
+                confirmacion = input("¿Querés guardar la versión de dolphin? (si/no): ")
                 if confirmacion.strip().lower() in ["si", "sí", "s", "yes"]:
                     escribir_archivo(ruta, codigo_mejorado)
                     return "Código guardado."
