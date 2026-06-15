@@ -13,6 +13,7 @@ from core.search import buscar_web, formatear_resultados
 from core.code_analyzer import analizar_archivo, analizar_proyecto, guardar_reporte
 from core.dataset_collector import guardar_interaccion 
 from core.code_reviewer import revisar_codigo
+from core.auditoria import auditar_proyecto
 
 HISTORIAL_CONVERSACION =  []
 OPCIONES_PENDIENTES = []
@@ -204,6 +205,12 @@ def detectar_intencion(texto):
     elif any(indicador in texto for indicador in  ["/home/", "/tmp/", "~/", ".py", ".txt", ".md", ".json"]):
         return "leer_archivo"
 
+    elif any(frase in texto for frase in [
+        "auditá tu código", "audita tu código", "auditá tu codigo", "audita tu codigo",
+        "auditoría", "auditoria", "auditate", "revisá todo tu código", "autoauditoría"
+    ]):
+        return "auditar_codigo"
+
 
     
     return "desconocida"
@@ -363,7 +370,7 @@ def consultar_llama(texto):
     "FORMATO: Máximo 2 párrafos cortos. Sin listas numeradas ni viñetas. Texto corrido siempre. "
     "Si un tema necesita enumerar cosas, incorporalas naturalmente en el texto separadas por comas. "
     f"Lo que sabés sobre el usuario: {contexto_memoria}" if contexto_memoria else ""
-)
+    )
     if contexto_proyecto: 
         sistema += f"\n\nContexto de tu arquitectura y proyecto: \n{contexto_proyecto}"
 
@@ -529,6 +536,12 @@ def procesar_comando(texto, assistant_name):
 
     elif intencion == "consultar_nombre":
         return f"Me llamo {assistant_name}"
+    
+    elif intencion == "auditar_codigo":
+        print("Iniciando auto-auditoría. Esto puede tardar un par de minutos...")
+        resultado = auditar_proyecto()
+        return resultado
+
 
     elif intencion == "mejorar_codigo": 
         if DEBUG_MODE:
@@ -684,7 +697,8 @@ def procesar_comando(texto, assistant_name):
     respuesta = consultar_llama(texto_original)
     if respuesta: 
         return respuesta
-
+    
+    
     return "no pude generar una respuesta"
 
 def escribir_archivo(ruta, contenido):
