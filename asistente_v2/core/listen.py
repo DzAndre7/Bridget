@@ -2,6 +2,8 @@ import whisper
 import sounddevice as sd
 import numpy as np 
 import webrtcvad
+import warnings
+warnings.filterwarnings("ignore")
 from scipy.io.wavfile import write
 
 MODELO_WHISPER = whisper.load_model("base", device= "cpu")
