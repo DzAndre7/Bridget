@@ -13,6 +13,11 @@ def hablar(texto):
     )
     subprocess.run(["paplay", AUDIO_SALIDA])
 
+def hablar_interrumpible(texto):
+    tts.tts_to_file(text=texto, file_path=AUDIO_SALIDA)
+    proceso = subprocess.Popen(["paplay", AUDIO_SALIDA])
+    return proceso
+
 def generar_audio(texto):
     """Genera audio sin reproducir. Retorna la ruta del archivo."""
     try:

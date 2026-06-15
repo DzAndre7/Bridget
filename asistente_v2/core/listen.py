@@ -53,3 +53,14 @@ def escuchar_audio(ruta_archivo):
     except Exception as e:
         print(f"Error al transcibir: {e}")
         return None
+
+def escuchar_fragmento(duracion=1.5):
+    import sounddevice as sd 
+    import numpy as np 
+    from scipy.io.wavfile import write
+
+    audio = sd.rec(int(duracion * FRECUENCIA), samplerate=FRECUENCIA, channels=1, dtype='int16')
+    sd.wait()
+    write("/tmp/rick_fragmento.wav", FRECUENCIA, audio)
+    resultado = MODELO_WHISPER.transcribe("/tmp/rick_fragmento.wav", language="es")
+    return resultado["text"].strip().lower()
