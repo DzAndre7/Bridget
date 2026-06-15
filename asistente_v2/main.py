@@ -5,6 +5,7 @@ from core.voice import hablar, hablar_interrumpible
 from core.listen import escuchar
 
 ASSISTANT_NAME = "Rick"
+VOZ_ACTIVADA = True
 
 def limpiar_para_tts(texto):
     import re
@@ -122,6 +123,13 @@ def main():
             modo_voz_interrumpible()
             continue
 
+        if user_input.lower().strip() in ["activar voz", "activá voz", "modo texto", "silencio", "callate"]:
+            global VOZ_ACTIVADA
+            VOZ_ACTIVADA = not VOZ_ACTIVADA
+            estado = "activada" if VOZ_ACTIVADA else "desactivada"
+            print(f"{ASSISTANT_NAME}: Voz {estado}.")
+            continue
+
         if user_input.lower() in ["salir", "exit", "quit", "adiós", "adios"]:
             print(f"{ASSISTANT_NAME}: Nos vemos.")
             break
@@ -141,10 +149,11 @@ def main():
         if respuesta is None:
             respuesta = "No pude generar una respuesta."
         print(f"{ASSISTANT_NAME}: {respuesta}") 
-        if "```" in respuesta:
-            hablar("Revisá el código en pantalla.")
-        else:
-            hablar(limpiar_para_tts(respuesta))  
+        if VOZ_ACTIVADA:
+            if "```" in respuesta:
+                hablar("Revisá el código en pantalla.")
+            else:
+                hablar(limpiar_para_tts(respuesta))  
 
 if __name__ == "__main__":
     main()
