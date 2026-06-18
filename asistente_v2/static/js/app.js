@@ -8,6 +8,7 @@ const API_SPEAK_URL = "https://cling-immodest-case.ngrok-free.dev/speak";
 const API_KEY = "kyy007351andy's#key";
 
 const chat = document.getElementById("chat");
+const inputArea = document.getElementById("input-area");
 const input = document.getElementById("input");
 const send = document.getElementById("send");
 const mic = document.getElementById("mic");
@@ -54,7 +55,7 @@ function agregarMensaje(texto, tipo) {
         div.textContent = texto;
     }
     chat.appendChild(div);
-    chat.scrollTop = chat.scrollHeight;
+    requestAnimationFrame(() => { chat.scrollTop = chat.scrollHeight; });
 }
 
 async function reproducirRespuesta(texto, audioContainer) {
@@ -633,6 +634,15 @@ input.addEventListener("input", () => {
     input.style.height = "auto";
     input.style.height = Math.min(input.scrollHeight, 100) + "px";
 });
+
+// La barra de entrada crece con texto multilinea; como ya no es "fixed"
+// sino un elemento normal del flex-column, el chat se reajusta solo y
+// nunca queda tapado. Solo hace falta mantener el scroll abajo si el
+// usuario ya estaba viendo el final.
+const cercaDelFondo = () => chat.scrollHeight - chat.scrollTop - chat.clientHeight < 40;
+new ResizeObserver(() => {
+    if (cercaDelFondo()) chat.scrollTop = chat.scrollHeight;
+}).observe(inputArea);
 
 mic.addEventListener("mousedown", iniciarGrabacion);
 mic.addEventListener("mouseup", detenerGrabacion);
