@@ -1,5 +1,15 @@
 import json 
 import os 
+import re 
+
+DISPARADORES = [
+    "me puedes decir",
+    "me podes decir", 
+    "pudes decirme",
+    "podes decirme",
+    "llamame ",
+    "llámame "
+]
 
 MEMORY_FILE = "memory.json"
 
@@ -10,7 +20,11 @@ def cargar_recuerdos():
     try: 
         with open(MEMORY_FILE, "r", encoding="utf-8") as archivo:
             return json.load(archivo)
-    except (json.JSONDecodeError, FileNotFoundError):
+    except json.JSONDecodeError as e:
+        print(f"Error al decodificar JSON: {e}")
+        return []
+    except FileNotFoundError as e:
+        print(f"Error al abrir archivo: {e}")
         return []
     
 def guardar_recuerdo(recuerdo):
@@ -45,22 +59,13 @@ def borrar_todos_los_recuerdos():
 def obtener_nombre_preferido():
     recuerdos = cargar_recuerdos() 
 
-    disparadores = [
-        "me puedes decir",
-        "me podes decir",
-        "puedes decirme",
-        "podes decirme",
-        "llamame ",
-        "llámame ",
-    ]
+    patron = re.compile("|".join(DISPARADORES), re.IGNORECASE)
 
     for recuerdo in recuerdos: 
-        recuerdo_normalizado = recuerdo.lower()
+        coincidencia = patron.search(recuerdo)
 
-        for disparador in disparadores:
-            if disparador in recuerdo_normalizado:
-                inicio = recuerdo_normalizado.find(disparador) + len(disparador)
-                nombre = recuerdo_normalizado[inicio:].strip(" ,¿?.,;:!")
-                if nombre: 
-                    return nombre.title()
+        if coincidencia: 
+            nombre = recuerdo[coincidencia.end():].strip(" ,¿?.,;:!")
+            if nombre: 
+                return nombre.title()
     return None
