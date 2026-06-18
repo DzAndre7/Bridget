@@ -501,7 +501,14 @@
             const div = document.createElement("div");
             div.className = `mensaje ${tipo}`;
             if (tipo === "rick") {
-                div.innerHTML = `<div class="nombre">RICK //</div><div>${texto}</div>`;
+                const nombreDiv = document.createElement("div");
+                nombreDiv.className = "nombre";
+                nombreDiv.textContent = "RICK //";
+                div.appendChild(nombreDiv);
+
+                const textoDiv = document.createElement("div");
+                textoDiv.textContent = texto;
+                div.appendChild(textoDiv);
 
                 // Agregar contenedor para controles de voz
                 const audioDiv = document.createElement("div");
@@ -522,15 +529,13 @@
 
         async function reproducirRespuesta(texto, audioContainer) {
             try {
-                // Buscar botón existente o crearlo
-                let btn = audioContainer.querySelector("button");
-                let audioState = audioContainer.dataset.audioState || "none";
+                // Reutilizar el botón ya existente (creado en agregarMensaje)
+                const btn = audioContainer.querySelector("button");
+                const audioState = audioContainer.dataset.audioState || "none";
 
-                if (!btn) {
-                    btn = document.createElement("button");
+                if (audioState === "none") {
                     btn.textContent = "⏳ GENERANDO...";
                     btn.disabled = true;
-                    audioContainer.appendChild(btn);
                     audioContainer.dataset.audioState = "generating";
 
                     const res = await fetch(API_SPEAK_URL, {
@@ -612,6 +617,12 @@
 
             } catch (e) {
                 console.error("Error:", e);
+                const btn = audioContainer.querySelector("button");
+                if (btn) {
+                    btn.textContent = "🔊 ESCUCHAR";
+                    btn.disabled = false;
+                }
+                audioContainer.dataset.audioState = "none";
             }
         }
 
@@ -733,7 +744,11 @@
                 });
                 const data = await res.json();
                 chat.removeChild(cargando);
-                agregarMensaje(data.respuesta, "rick");
+                if (data.error) {
+                    agregarMensaje(`Error: ${data.error}`, "rick");
+                } else {
+                    agregarMensaje(data.respuesta, "rick");
+                }
             } catch (e) {
                 chat.removeChild(cargando);
                 agregarMensaje("Error de conexión.", "rick");
@@ -859,8 +874,14 @@
         mic.addEventListener("mouseup", detenerGrabacion);
         mic.addEventListener("mouseleave", detenerGrabacion);
 
-        mic.addEventListener("touchstart", iniciarGrabacion);
-        mic.addEventListener("touchend", detenerGrabacion);
+        mic.addEventListener("touchstart", (e) => {
+            e.preventDefault();
+            iniciarGrabacion();
+        });
+        mic.addEventListener("touchend", (e) => {
+            e.preventDefault();
+            detenerGrabacion();
+        });
 
         dropZone.addEventListener("click", () => fileInput.click());
 
