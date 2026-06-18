@@ -4,6 +4,8 @@ import ollama
 import subprocess
 import shutil
 import os
+
+from core.memoria_semantica import recordar, guardar_recuerdo as guardar_recuerdo_semantico
 from actions.system_actions import buscar_en_internet, abrir_programa, PROGRAMAS
 from core.memory import cargar_recuerdos, guardar_recuerdo, leer_recuerdos, olvidar_recuerdo, borrar_todos_los_recuerdos
 from core.preferences import cargar_preferencias, guardar_preferencia, obtener_preferencia
@@ -21,7 +23,7 @@ ESPERANDO_CONFIRMACION_BORRADO = False
 ESPERANDO_CONFIRMACION_TAREA = False
 PLAN_PENDIENTE = ""
 PLAN_NOMBRE = ""
-DEBUG_MODE = False
+DEBUG_MODE = True
 
 def normalizar_texto(texto):
     texto = texto.lower()
@@ -362,6 +364,14 @@ def consultar_llama(texto):
     recuerdos = leer_recuerdos()
     contexto_memoria = "; ".join(recuerdos) if recuerdos else ""
 
+    # Buscar recuerdos semánticos relevantes para el momento actual
+    recuerdos_semanticos = recordar(texto, top_k=3)
+    if DEBUG_MODE: 
+        print(f"DEBUG SEMANTICA: {[r['texto'][:40] for r in recuerdos_semanticos]}")
+    if recuerdos_semanticos:
+        contexto_semantico = "\n".join([f"- {r['texto']}" for r in recuerdos_semanticos])
+        contexto_memoria = contexto_memoria + "\n\nRecuerdos relevantes para este momento:\n" + contexto_semantico if contexto_memoria else "Recuerdos relevantes para este momento:\n" + contexto_semantico
+
     sistema = (
     "Sos Rick, un asistente personal creado por André. "
     "Naciste el 17 de abril de 2026. "
@@ -379,15 +389,12 @@ def consultar_llama(texto):
     HISTORIAL_CONVERSACION.append({"role": "user", "content": texto})   
 
     respuesta = ollama.chat(
-        model="dolphin-mistral",
+        model="dolphin3:8b",
         messages=[{"role": "system", "content": sistema}] + HISTORIAL_CONVERSACION  
     )
-
     contenido = respuesta["message"]["content"]
     HISTORIAL_CONVERSACION.append({"role": "assistant", "content": contenido})  
-    
     guardar_interaccion(texto, contenido)
-
     return contenido
 
 def leer_archivo(ruta):

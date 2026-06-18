@@ -4,15 +4,29 @@ import sys
 from TTS.api import TTS
 from contextlib import contextmanager
 
+import builtins
+_print_original = builtins.print
+
+def _print_seguro(*args, **kwargs):
+    try:
+        _print_original(*args, **kwargs)
+    except UnicodeEncodeError:
+        pass
+
+builtins.print = _print_seguro
+
 @contextmanager
 def silenciar_salida():
     with open(os.devnull, "w") as devnull:
         viejo_stdout = sys.stdout
-        sys.stdout = devnull 
+        viejo_stderr = sys.stderr
+        sys.stdout = devnull
+        sys.stderr = devnull
         try:
             yield
         finally:
             sys.stdout = viejo_stdout
+            sys.stderr = viejo_stderr
 
 MODELO = "tts_models/es/css10/vits"
 AUDIO_SALIDA = "/tmp/rick_respuesta.wav"
