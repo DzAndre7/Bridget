@@ -175,8 +175,10 @@ def detectar_intencion(texto):
         return "abrir_navegador"
 
     elif any(frase in texto for frase in [
-        "mirá la pantalla", "observá la pantalla" "que ves en mi pantalla"
-        ]):
+        "mirá mi pantalla", "mira mi pantalla", "mirá la pantalla", "mira la pantalla",
+        "observá mi pantalla", "observa mi pantalla", "observá la pantalla",
+        "qué ves en mi pantalla", "que ves en mi pantalla", "ves mi pantalla"
+    ]):
         return "ver_pantalla"
 
     elif any(frase in texto for frase in [
