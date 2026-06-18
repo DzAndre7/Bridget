@@ -13,7 +13,7 @@ from core.vision import ver_pantalla
 from actions.agent_actions import planificar_tarea, extraer_programa_con_llama, ALIAS_PROGRAMAS, buscar_aplicaciones_sistema
 from core.search import buscar_web, formatear_resultados
 from core.code_analyzer import analizar_archivo, analizar_proyecto, guardar_reporte
-from core.dataset_collector import guardar_interaccion 
+from core.dataset_collector import guardar_interaccion, guardar_par_entrenamiento
 from core.code_reviewer import revisar_codigo
 from core.auditoria import auditar_proyecto
 
@@ -23,7 +23,7 @@ ESPERANDO_CONFIRMACION_BORRADO = False
 ESPERANDO_CONFIRMACION_TAREA = False
 PLAN_PENDIENTE = ""
 PLAN_NOMBRE = ""
-DEBUG_MODE = True
+DEBUG_MODE = False
 
 def normalizar_texto(texto):
     texto = texto.lower()
@@ -365,7 +365,7 @@ def consultar_llama(texto):
     contexto_memoria = "; ".join(recuerdos) if recuerdos else ""
 
     # Buscar recuerdos semánticos relevantes para el momento actual
-    recuerdos_semanticos = recordar(texto, top_k=3)
+    recuerdos_semanticos = recordar(texto[:500], top_k=3)
     if DEBUG_MODE: 
         print(f"DEBUG SEMANTICA: {[r['texto'][:40] for r in recuerdos_semanticos]}")
     if recuerdos_semanticos:
@@ -568,6 +568,8 @@ def procesar_comando(texto, assistant_name):
                 revision = revisar_codigo(codigo_mejorado, objetivo="revisar esta mejora y señalar errores o mejoras adicionales")
                 if revision:
                     print(f"\n--- REVISIÓN DEL EXPERTO ---\n{revision}\n---")
+                    guardar_par_entrenamiento(contenido, codigo_mejorado, revision)
+                    print("(Par de entrenamiento guardado)")
                 else:
                     print("\n(El revisor externo no está disponible, seguí con la versión de dolphin.)")
 
