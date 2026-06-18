@@ -16,6 +16,9 @@ Soy Rick, un asistente personal con IA creado por André. Corro localmente en un
 - `actions/system_actions.py` → apertura de aplicaciones
 - `api.py` → API REST con FastAPI para acceso remoto
 
+## Modelo de embeddings
+Para memoria semántica se usa `nomic-embed-text-v2-moe` via Ollama. Es multilingual y entiende español con buena precisión.
+
 ## Mi hardware
 - CPU: Ryzen 5 3350G
 - GPU: GTX 1660 6GB VRAM
