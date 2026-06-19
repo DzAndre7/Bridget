@@ -5,8 +5,8 @@ from PIL import ImageGrab
 
 def capturar_pantalla():
     captura = ImageGrab.grab()
-    captura.save("/tmp/rick_pantalla.png")
-    with open("/tmp/rick_pantalla.png", "rb") as f:
+    captura.save("/tmp/bridget_pantalla.png")
+    with open("/tmp/bridget_pantalla.png", "rb") as f:
         return base64.b64encode(f.read()).decode("utf-8")
 
 def liberar_modelo(modelo):

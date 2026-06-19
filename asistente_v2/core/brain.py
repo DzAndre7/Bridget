@@ -7,7 +7,7 @@ import os
 
 from config import ASSISTANT_NAME
 from core.memoria_semantica import recordar, guardar_recuerdo as guardar_recuerdo_semantico
-from actions.system_actions import buscar_en_internet, abrir_programa, PROGRAMAS
+from actions.system_actions import buscar_en_internet, abrir_programa
 from core.memory import cargar_recuerdos, guardar_recuerdo, leer_recuerdos, olvidar_recuerdo, borrar_todos_los_recuerdos
 from core.preferences import cargar_preferencias, guardar_preferencia, obtener_preferencia
 from core.vision import ver_pantalla
@@ -295,7 +295,7 @@ def clasificar_objeto_apertura(objeto):
     if objeto_limpio in categorias:
         return "categoria", objeto_limpio
     
-    if objeto_limpio in PROGRAMAS:
+    if objeto_limpio in ALIAS_PROGRAMAS:
         return "programa", objeto_limpio
     
     return None, None

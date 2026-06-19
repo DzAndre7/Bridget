@@ -29,7 +29,7 @@ def silenciar_salida():
             sys.stderr = viejo_stderr
 
 MODELO = "tts_models/es/css10/vits"
-AUDIO_SALIDA = "/tmp/rick_respuesta.wav"
+AUDIO_SALIDA = "/tmp/bridget_respuesta.wav"
 
 with silenciar_salida():
     tts = TTS(model_name=MODELO, progress_bar=False).to("cuda")

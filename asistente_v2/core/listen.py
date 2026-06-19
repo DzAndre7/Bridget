@@ -7,7 +7,7 @@ warnings.filterwarnings("ignore")
 from scipy.io.wavfile import write
 
 MODELO_WHISPER = whisper.load_model("base", device= "cpu")
-ARCHIVO_TEMP = "/tmp/rick_escucha.wav"
+ARCHIVO_TEMP = "/tmp/bridget_escucha.wav"
 FRECUENCIA = 16000
 DURACION_SILENCIO = 1.6 # segundos de silencio para cortar
 
@@ -63,6 +63,6 @@ def escuchar_fragmento(duracion=1.5):
 
     audio = sd.rec(int(duracion * FRECUENCIA), samplerate=FRECUENCIA, channels=1, dtype='int16')
     sd.wait()
-    write("/tmp/rick_fragmento.wav", FRECUENCIA, audio)
-    resultado = MODELO_WHISPER.transcribe("/tmp/rick_fragmento.wav", language="es")
+    write("/tmp/bridget_fragmento.wav", FRECUENCIA, audio)
+    resultado = MODELO_WHISPER.transcribe("/tmp/bridget_fragmento.wav", language="es")
     return resultado["text"].strip().lower()

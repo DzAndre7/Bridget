@@ -15,7 +15,7 @@ import io
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-API_KEY = os.environ.get("RICK_API_KEY", "")
+API_KEY = os.environ.get("BRIDGET_API_KEY", "")
 
 class Mensaje(BaseModel):
     texto: str
@@ -35,7 +35,7 @@ async def audio(file: UploadFile = File(...), x_api_key: str = Header(None)):
     try:
         contenido = await file.read()
 
-        ruta_temp = "/tmp/rick_audio_api.wav"
+        ruta_temp = "/tmp/bridget_audio_api.wav"
         with open(ruta_temp, "wb") as f:
             f.write(contenido)
 
