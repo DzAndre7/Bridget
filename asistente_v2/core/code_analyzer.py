@@ -3,6 +3,7 @@ import json
 import ollama
 from datetime import datetime
 from pathlib import Path
+from config import ASSISTANT_NAME
 
 REPORTS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "reports")
 
@@ -187,7 +188,7 @@ def generar_reporte_markdown(analisis_resultado, tipo="archivo"):
 {analisis_resultado['analisis']}
 
 ---
-*Generado por Rick - Asistente de Código*
+*Generado por {ASSISTANT_NAME} - Asistente de Código*
 """
     else:  # proyecto
         contenido = f"""# Análisis de Proyecto
@@ -209,7 +210,7 @@ def generar_reporte_markdown(analisis_resultado, tipo="archivo"):
             contenido += f"\n### {nombre}\n\n"
             contenido += f"{resultado['analisis']}\n\n---\n"
 
-        contenido += "\n*Generado por Rick - Asistente de Código*"
+        contenido += f"\n*Generado por {ASSISTANT_NAME} - Asistente de Código*"
 
     return contenido
 

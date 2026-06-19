@@ -1,8 +1,11 @@
+
 import os
 import time
+
 from datetime import datetime
 from core.code_analyzer import obtener_archivos_python
 from core.code_reviewer import revisar_codigo
+from config import ASSISTANT_NAME
 
 REPORTES_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "reports")
 
@@ -25,7 +28,7 @@ def auditar_proyecto():
     ruta_reporte = os.path.join(REPORTES_DIR, f"auditoria_{timestamp}.md")
 
     with open(ruta_reporte, "w", encoding="utf-8") as reporte:
-        reporte.write(f"# Auditoría de código de Rick\n\n")
+        reporte.write(f"# Auditoría de código de {ASSISTANT_NAME}\n\n")
         reporte.write(f"Fecha: {datetime.now().isoformat()}\n\n")
         reporte.write(f"Archivos auditados: {len(archivos)}\n\n---\n\n")
 

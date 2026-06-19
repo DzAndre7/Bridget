@@ -4,6 +4,7 @@ import ollama
 import os
 import glob
 from core.vision import capturar_pantalla, ver_pantalla
+from config import ASSISTANT_NAME
 
 pyautogui.FAILSAFE = False
 pyautogui.PAUSE = 0.5
@@ -61,7 +62,7 @@ def esperar(segundos):
     time.sleep(segundos)
 def planificar_tarea(instruccion):
     prompt = f"""
-Sos Rick, un agente que controla una PC con Arch Linux.
+Sos {ASSISTANT_NAME}, un agente que controla una PC con Arch Linux.
 Tarea solicitada: {instruccion}
 
 Describí en lenguaje natural y de forma concisa los pasos que vas a seguir para completar la tarea.
