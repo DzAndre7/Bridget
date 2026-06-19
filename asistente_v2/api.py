@@ -1,3 +1,5 @@
+
+from config import ASSISTANT_NAME
 from fastapi import FastAPI, HTTPException, Header, UploadFile, File
 from pydantic import BaseModel
 from core.brain import procesar_comando
@@ -6,14 +8,14 @@ from core.listen import escuchar_audio
 from core.voice import generar_audio
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+
 import os
 import io
 
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-ASSISTANT_NAME = "Rick"
-API_KEY = "kyy007351andy's#key"  # cambiá esto por algo tuyo
+API_KEY = os.environ.get("RICK_API_KEY", "")
 
 class Mensaje(BaseModel):
     texto: str

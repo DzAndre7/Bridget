@@ -1,12 +1,13 @@
 import sys 
-sys.stdout.reconfigure(encoding="utf-8")
 import datetime 
+sys.stdout.reconfigure(encoding="utf-8")
+
+from config import ASSISTANT_NAME
 from core.brain import procesar_comando, consultar_llama
 from core.memory import obtener_nombre_preferido, guardar_recuerdo
 from core.voice import hablar, hablar_interrumpible
 from core.listen import escuchar
 
-ASSISTANT_NAME = "Rick"
 VOZ_ACTIVADA = True
 
 def limpiar_para_tts(texto):

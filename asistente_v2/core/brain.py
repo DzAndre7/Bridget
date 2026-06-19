@@ -5,6 +5,7 @@ import subprocess
 import shutil
 import os
 
+from config import ASSISTANT_NAME
 from core.memoria_semantica import recordar, guardar_recuerdo as guardar_recuerdo_semantico
 from actions.system_actions import buscar_en_internet, abrir_programa, PROGRAMAS
 from core.memory import cargar_recuerdos, guardar_recuerdo, leer_recuerdos, olvidar_recuerdo, borrar_todos_los_recuerdos
@@ -129,12 +130,6 @@ def detectar_intencion(texto):
         "ejecutá", "ejecuta", "hacé", "hace", "abrí", "abri", "mandá", "manda", "escribile", "enviá", "envia", "inicia", "iniciá"
         ]):
         return "ejecutar_tarea"
-
-  #  elif any(frase in texto for frase in [
-  #     "analizá", "analiza", "analizame", "revisá", "revisa", "buscá bugs", "busca bugs"
-  #  ]):
-  #      return "analizar_codigo"
-    
     
     elif ("borra" in texto or "olvida" in texto or "elimina" in texto) and ("todos" in texto or "toda" in texto) and ("recuerdos" in texto or "memoria" in texto):
         return "borrar_todos_los_recuerdos"
@@ -373,7 +368,7 @@ def consultar_llama(texto):
         contexto_memoria = contexto_memoria + "\n\nRecuerdos relevantes para este momento:\n" + contexto_semantico if contexto_memoria else "Recuerdos relevantes para este momento:\n" + contexto_semantico
 
     sistema = (
-    "Sos Rick, un asistente personal creado por André. "
+    f"Sos {ASSISTANT_NAME}, un asistente personal creado por André. "
     "Naciste el 17 de abril de 2026. "
     "Respondés siempre en español salvo que se te indique otro idioma. "
     "Tu tono es tranquilo, directo y natural — como una persona inteligente charlando, no un manual. "
