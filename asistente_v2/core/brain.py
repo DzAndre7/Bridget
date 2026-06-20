@@ -5,6 +5,7 @@ import subprocess
 import shutil
 import os
 
+from core import cerebro
 from config import ASSISTANT_NAME
 from core.memoria_semantica import recordar, guardar_recuerdo as guardar_recuerdo_semantico
 from actions.system_actions import buscar_en_internet, abrir_programa
@@ -125,6 +126,15 @@ def detectar_intencion(texto):
     
     elif texto in ["s", "y", "confirmar borrado"]:
         return "confirmar_borrado"
+    
+    elif any(frase in texto for frase in [
+        "guarda esto", "guardá esto", "guarda eso", "guardá eso",
+        "anota esto", "anotá esto", "anota eso", "anotá eso",
+        "guarda en tu cerebro", "guardá en tu cerebro",
+        "guarda en el cerebro", "guardá en el cerebro",
+        "guarda esto en tu cerebro", "guardá esto en tu cerebro"
+    ]):
+        return "guardar_en_cerebro"
     
     elif any(frase in texto for frase in [
         "ejecutá", "ejecuta", "hacé", "hace", "abrí", "abri", "mandá", "manda", "escribile", "enviá", "envia", "inicia", "iniciá"
@@ -347,12 +357,12 @@ def extraer_tipo_analisis(texto):
 
 def consultar_llama(texto):
     global HISTORIAL_CONVERSACION
-    contexto_proyecto = "" 
+    contexto_proyecto = ""
     ruta_contexto = os.path.join(os.path.dirname(__file__), "..", "context.md")
-    try: 
-        with open(ruta_contexto, "r", encoding="utf-8") as f: 
+    try:
+        with open(ruta_contexto, "r", encoding="utf-8") as f:
             contexto_proyecto = f.read()
-    except: 
+    except:
         pass
     if DEBUG_MODE:
         print(f"DEBUG CONTEXTO: {contexto_proyecto[:100]if contexto_proyecto else 'VACÍO'}")
@@ -361,34 +371,50 @@ def consultar_llama(texto):
 
     # Buscar recuerdos semánticos relevantes para el momento actual
     recuerdos_semanticos = recordar(texto[:500], top_k=3)
-    if DEBUG_MODE: 
+    if DEBUG_MODE:
         print(f"DEBUG SEMANTICA: {[r['texto'][:40] for r in recuerdos_semanticos]}")
     if recuerdos_semanticos:
         contexto_semantico = "\n".join([f"- {r['texto']}" for r in recuerdos_semanticos])
         contexto_memoria = contexto_memoria + "\n\nRecuerdos relevantes para este momento:\n" + contexto_semantico if contexto_memoria else "Recuerdos relevantes para este momento:\n" + contexto_semantico
 
+    # Buscar en el cerebro (vault de Obsidian) notas relevantes
+    notas_cerebro = cerebro.consultar_cerebro(texto, max_notas=3)
+    if DEBUG_MODE:
+        print(f"DEBUG CEREBRO: {[n['titulo'] for n in notas_cerebro]}")
+    if notas_cerebro:
+        contexto_notas = "\n\n".join(
+            [f"### {n['titulo']}\n{n['contenido']}" for n in notas_cerebro]
+        )
+        contexto_memoria = (
+            contexto_memoria
+            + "\n\nNotas de tu cerebro relevantes para este momento:\n"
+            + contexto_notas
+        ) if contexto_memoria else (
+            "Notas de tu cerebro relevantes para este momento:\n" + contexto_notas
+        )
+
     sistema = (
-    f"Sos {ASSISTANT_NAME}, un asistente personal creado por André. "
-    "Naciste el 17 de abril de 2026. "
-    "Respondés siempre en español salvo que se te indique otro idioma. "
-    "Tu tono es tranquilo, directo y natural — como una persona inteligente charlando, no un manual. "
-    "Nunca te presentés ni describas quién sos. Respondé directamente lo que te preguntan. "
-    "Nunca menciones Llama, Meta ni tu modelo base. Si te preguntan quién te creó, decí solo 'André'. "
-    "FORMATO: Máximo 2 párrafos cortos. Sin listas numeradas ni viñetas. Texto corrido siempre. "
-    "Si un tema necesita enumerar cosas, incorporalas naturalmente en el texto separadas por comas. "
-    f"Lo que sabés sobre el usuario: {contexto_memoria}" if contexto_memoria else ""
+        f"Sos {ASSISTANT_NAME}, un asistente personal creado por André. "
+        "Naciste el 17 de abril de 2026. "
+        "Respondés siempre en español salvo que se te indique otro idioma. "
+        "Tu tono es tranquilo, directo y natural — como una persona inteligente charlando, no un manual. "
+        "Nunca te presentés ni describas quién sos. Respondé directamente lo que te preguntan. "
+        "Nunca menciones Llama, Meta ni tu modelo base. Si te preguntan quién te creó, decí solo 'André'. "
+        "FORMATO: Máximo 2 párrafos cortos. Sin listas numeradas ni viñetas. Texto corrido siempre. "
+        "Si un tema necesita enumerar cosas, incorporalas naturalmente en el texto separadas por comas. "
+        f"Lo que sabés sobre el usuario: {contexto_memoria}" if contexto_memoria else ""
     )
-    if contexto_proyecto: 
+    if contexto_proyecto:
         sistema += f"\n\nContexto de tu arquitectura y proyecto: \n{contexto_proyecto}"
 
-    HISTORIAL_CONVERSACION.append({"role": "user", "content": texto})   
+    HISTORIAL_CONVERSACION.append({"role": "user", "content": texto})
 
     respuesta = ollama.chat(
         model="dolphin3:8b",
-        messages=[{"role": "system", "content": sistema}] + HISTORIAL_CONVERSACION  
+        messages=[{"role": "system", "content": sistema}] + HISTORIAL_CONVERSACION
     )
     contenido = respuesta["message"]["content"]
-    HISTORIAL_CONVERSACION.append({"role": "assistant", "content": contenido})  
+    HISTORIAL_CONVERSACION.append({"role": "assistant", "content": contenido})
     guardar_interaccion(texto, contenido)
     return contenido
 
@@ -579,6 +605,33 @@ def procesar_comando(texto, assistant_name):
             print(f"\n--- CÓDIGO MEJORADO ---\n{codigo_mejorado}\n---")
             return "Revisá el código mejorado arriba."
     
+    elif intencion == "guardar_en_cerebro":
+        # Buscamos la última cosa que dijo Bridget en el historial.
+        # Recorremos de atrás para adelante hasta encontrar un mensaje del asistente.
+        ultima_respuesta = None
+        for mensaje in reversed(HISTORIAL_CONVERSACION):
+            if mensaje["role"] == "assistant":
+                ultima_respuesta = mensaje["content"]
+                break
+
+        if not ultima_respuesta:
+            return "No tengo nada reciente para guardar todavía. Decime algo primero y después pedime que lo guarde."
+
+        # Generamos un título corto con el LLM.
+        # Le pasamos consultar_llama como la función que consulta el modelo.
+        titulo = cerebro.generar_titulo(ultima_respuesta, consultar_llama)
+
+        ruta = cerebro.guardar_nota(
+            titulo=titulo,
+            contenido=ultima_respuesta,
+            carpeta="conversaciones"
+        )
+
+        if ruta:
+            return f"Guardado en tu cerebro como «{titulo}»."
+        else:
+            return "Quise guardarlo pero algo falló al escribir la nota."
+
     elif intencion == "guardar_recuerdo":
         recuerdo = extraer_recuerdo(texto) 
 

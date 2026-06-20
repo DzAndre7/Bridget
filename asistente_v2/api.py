@@ -1,5 +1,7 @@
 
 from config import ASSISTANT_NAME
+from dotenv import load_dotenv
+load_dotenv()
 from fastapi import FastAPI, HTTPException, Header, UploadFile, File
 from pydantic import BaseModel
 from core.brain import procesar_comando
