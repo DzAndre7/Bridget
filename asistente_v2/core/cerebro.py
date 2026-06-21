@@ -252,6 +252,16 @@ def generar_titulo(contenido, funcion_llm):
     except Exception:
         return "Nota sin titulo"
 
+# Palabras vacías: frecuentes pero sin valor para buscar. Las ignoramos
+# para que no contaminen la búsqueda (ej: "sobre" matcheaba notas irrelevantes).
+STOPWORDS = {
+    "sobre", "sabes", "sabés", "saber", "para", "como", "cómo", "que", "qué",
+    "cual", "cuál", "donde", "dónde", "cuando", "cuándo", "porque", "por",
+    "con", "sin", "los", "las", "una", "uno", "del", "este", "esta", "eso",
+    "esto", "tiene", "hacer", "puede", "decime", "contame", "explicame",
+    "explicáme", "decirme", "algo", "todo", "muy", "más", "mas", "pero",
+}
+
 def consultar_cerebro(texto, max_notas=3):
     """
     Busca en el cerebro notas relevantes a lo que el usuario está preguntando.
@@ -264,7 +274,11 @@ def consultar_cerebro(texto, max_notas=3):
     """
     # extraemos palabras significativas de la consulta (sacamos las muy cortas,
     # que suelen ser conectores: 'de', 'la', 'que', etc.)
-    palabras = [p for p in texto.lower().split() if len(p) > 3]
+    # sacamos palabras cortas Y stopwords (frecuentes pero sin significado)
+    palabras = [
+        p.strip("¿?¡!.,;:") for p in texto.lower().split()
+        if len(p) > 3 and p.strip("¿?¡!.,;:") not in STOPWORDS
+    ]
 
     notas_encontradas = {}  # usamos dict para no repetir la misma nota
 

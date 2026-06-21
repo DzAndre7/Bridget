@@ -25,7 +25,7 @@ ESPERANDO_CONFIRMACION_BORRADO = False
 ESPERANDO_CONFIRMACION_TAREA = False
 PLAN_PENDIENTE = ""
 PLAN_NOMBRE = ""
-DEBUG_MODE = False
+DEBUG_MODE = True
 
 def normalizar_texto(texto):
     texto = texto.lower()
@@ -365,7 +365,8 @@ def consultar_llama(texto):
     except:
         pass
     if DEBUG_MODE:
-        print(f"DEBUG CONTEXTO: {contexto_proyecto[:100]if contexto_proyecto else 'VACÍO'}")
+        print(f"DEBUG CONTEXTO: {contexto_proyecto[:100] if contexto_proyecto else 'VACÍO'}")
+
     recuerdos = leer_recuerdos()
     contexto_memoria = "; ".join(recuerdos) if recuerdos else ""
 
@@ -381,18 +382,8 @@ def consultar_llama(texto):
     notas_cerebro = cerebro.consultar_cerebro(texto, max_notas=3)
     if DEBUG_MODE:
         print(f"DEBUG CEREBRO: {[n['titulo'] for n in notas_cerebro]}")
-    if notas_cerebro:
-        contexto_notas = "\n\n".join(
-            [f"### {n['titulo']}\n{n['contenido']}" for n in notas_cerebro]
-        )
-        contexto_memoria = (
-            contexto_memoria
-            + "\n\nNotas de tu cerebro relevantes para este momento:\n"
-            + contexto_notas
-        ) if contexto_memoria else (
-            "Notas de tu cerebro relevantes para este momento:\n" + contexto_notas
-        )
 
+    # Armamos el system prompt base SIEMPRE (no depende de si hay memoria)
     sistema = (
         f"Sos {ASSISTANT_NAME}, un asistente personal creado por André. "
         "Naciste el 17 de abril de 2026. "
@@ -401,11 +392,32 @@ def consultar_llama(texto):
         "Nunca te presentés ni describas quién sos. Respondé directamente lo que te preguntan. "
         "Nunca menciones Llama, Meta ni tu modelo base. Si te preguntan quién te creó, decí solo 'André'. "
         "FORMATO: Máximo 2 párrafos cortos. Sin listas numeradas ni viñetas. Texto corrido siempre. "
-        "Si un tema necesita enumerar cosas, incorporalas naturalmente en el texto separadas por comas. "
-        f"Lo que sabés sobre el usuario: {contexto_memoria}" if contexto_memoria else ""
+        "Si un tema necesita enumerar cosas, incorporalas naturalmente en el texto separadas por comas."
     )
+
+    # Agregamos lo que sabe del usuario, solo si hay algo
+    if contexto_memoria:
+        sistema += f"\n\nLo que sabés sobre el usuario:\n{contexto_memoria}"
+
+    # Las notas del cerebro van con INSTRUCCIÓN EXPLÍCITA y bien separadas
+    if notas_cerebro:
+        contexto_notas = "\n\n".join(
+            [f"### {n['titulo']}\n{n['contenido']}" for n in notas_cerebro]
+        )
+        sistema += (
+            "\n\n=== NOTAS DE TU CEREBRO ===\n"
+            "Las siguientes notas son TUYAS, escritas por vos y André. "
+            "Son tu fuente principal de verdad sobre estos temas. "
+            "Cuando respondas algo relacionado, basate en estas notas ANTES que en tu conocimiento general. "
+            "Si una nota tiene información específica, usá esa información concreta en tu respuesta.\n\n"
+            "IMPORTANTE: respondé directamente con la información, de forma natural."
+            "NO digas 'recuerdo que', 'soy capaz de recordar', 'estoy familiarizado con'"
+            "Simplemente respondé como si fuera conocimiento tuyo, directo.\n\n"
+            + contexto_notas
+        )
+
     if contexto_proyecto:
-        sistema += f"\n\nContexto de tu arquitectura y proyecto: \n{contexto_proyecto}"
+        sistema += f"\n\nContexto de tu arquitectura y proyecto:\n{contexto_proyecto}"
 
     HISTORIAL_CONVERSACION.append({"role": "user", "content": texto})
 
