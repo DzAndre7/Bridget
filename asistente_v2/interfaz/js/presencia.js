@@ -193,4 +193,53 @@
 
   window.setEstado = function(m){ modo = m; };
   window.addEventListener('pywebviewready', aplicarConfigGuardada);
+
+  // --- Chat ---
+  var inputChat = document.getElementById('input-chat');
+  var btnEnviar = document.getElementById('btn-enviar');
+  var mensajesEl = document.getElementById('mensajes');
+
+  function agregarMensaje(texto, quien){
+    var div = document.createElement('div');
+    div.className = 'msg ' + (quien === 'user' ? 'msg-user' : 'msg-bridget');
+    div.textContent = texto;
+    mensajesEl.appendChild(div);
+    // scroll automático al último mensaje
+    mensajesEl.scrollTop = mensajesEl.scrollHeight;
+  }
+
+  function enviarMensaje(){
+    var texto = inputChat.value.trim();
+    if(!texto) return;
+    agregarMensaje(texto, 'user');
+    inputChat.value = '';
+
+    // Bridget "piensa": cambiamos el estado de la presencia
+    modo = 'hablando';
+
+    // Mostramos un indicador mientras el cerebro procesa
+    var pensando = document.createElement('div');
+    pensando.className = 'msg msg-bridget';
+    pensando.textContent = '...';
+    pensando.id = 'pensando-temp';
+    mensajesEl.appendChild(pensando);
+    mensajesEl.scrollTop = mensajesEl.scrollHeight;
+
+    if(window.pywebview && window.pywebview.api){
+      window.pywebview.api.enviar_mensaje(texto).then(function(respuesta){
+        // sacamos el indicador "..."
+        var temp = document.getElementById('pensando-temp');
+        if(temp) temp.remove();
+        agregarMensaje(respuesta, 'bridget');
+        modo = 'reposo';
+      });
+    }
+  }
+
+  btnEnviar.addEventListener('click', enviarMensaje);
+  inputChat.addEventListener('keydown', function(e){
+    if(e.key === 'Enter') enviarMensaje();
+  });
+
+
 })();
