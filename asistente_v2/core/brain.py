@@ -25,7 +25,7 @@ ESPERANDO_CONFIRMACION_BORRADO = False
 ESPERANDO_CONFIRMACION_TAREA = False
 PLAN_PENDIENTE = ""
 PLAN_NOMBRE = ""
-DEBUG_MODE = True
+DEBUG_MODE = False
 
 def normalizar_texto(texto):
     texto = texto.lower()
