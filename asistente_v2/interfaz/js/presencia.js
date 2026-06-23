@@ -329,4 +329,67 @@
     }
   }
 
+  // --- Micrófono (toggle: apretar para grabar, apretar/Enter para parar) ---
+  var btnMic = document.getElementById('btn-mic');
+  var grabando = false;
+
+  function toggleMicrofono(){
+    if(!(window.pywebview && window.pywebview.api)) return;
+
+    if(!grabando){
+      // empezar a grabar
+      window.pywebview.api.iniciar_microfono().then(function(ok){
+        if(ok){
+          grabando = true;
+          btnMic.classList.add('grabando');
+        }
+      });
+    } else {
+      // parar y transcribir
+      grabando = false;
+      btnMic.classList.remove('grabando');
+      btnMic.textContent = '…';
+      btnMic.disabled = true;
+
+      window.pywebview.api.detener_microfono().then(function(texto){
+        btnMic.textContent = '●';
+        btnMic.disabled = false;
+        if(texto){
+          // el texto transcrito CAE en el input, editable, NO se envía
+          if(inputChat.value.trim()){
+            inputChat.value = inputChat.value.trim() + ' ' + texto;
+          } else {
+            inputChat.value = texto;
+          }
+          ajustarAltura();
+          inputChat.focus();
+        }
+      });
+    }
+  }
+
+  // El textarea crece con el texto
+  function ajustarAltura(){
+    inputChat.style.height = 'auto';
+    inputChat.style.height = Math.min(inputChat.scrollHeight, 200) + 'px';
+  }
+
+  
+  inputChat.addEventListener('input', ajustarAltura);
+
+  btnMic.addEventListener('click', toggleMicrofono);
+
+  // Enter mientras grabás también detiene (además de enviar cuando no grabás)
+  inputChat.addEventListener('keydown', function(e){
+    if(e.key === 'Enter' && !e.shiftKey){
+      e.preventDefault();
+      if(grabando){
+        toggleMicrofono();  // si estás grabando, Enter detiene
+      } else {
+        enviarMensaje();    // si no, Enter envía
+      }
+    }
+    // Shift+Enter hace salto de línea normal (no hacemos nada, comportamiento default)
+  });
+
 })();

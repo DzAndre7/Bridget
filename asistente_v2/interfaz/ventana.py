@@ -65,6 +65,25 @@ class API:
             print(f"Error generando voz: {e}")
             return ""
 
+    def iniciar_microfono(self):
+        """Empieza a grabar del micrófono."""
+        from core import microfono_ventana
+        try:
+            microfono_ventana.iniciar_grabacion()
+            return True
+        except Exception as e:
+            print(f"Error iniciando micrófono: {e}")
+            return False
+
+    def detener_microfono(self):
+        """Para de grabar, transcribe, y devuelve el texto."""
+        from core import microfono_ventana
+        try:
+            return microfono_ventana.detener_grabacion()
+        except Exception as e:
+            print(f"Error deteniendo micrófono: {e}")
+            return ""
+
 
 def abrir_ventana():
     api = API()
