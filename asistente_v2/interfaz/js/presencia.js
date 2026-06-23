@@ -202,9 +202,22 @@
   function agregarMensaje(texto, quien){
     var div = document.createElement('div');
     div.className = 'msg ' + (quien === 'user' ? 'msg-user' : 'msg-bridget');
-    div.textContent = texto;
+
+    var textoDiv = document.createElement('div');
+    textoDiv.textContent = texto;
+    div.appendChild(textoDiv);
+
+    // Los mensajes de Bridget tienen botón de reproducción
+    if(quien === 'bridget'){
+      var btnVoz = document.createElement('button');
+      btnVoz.className = 'btn-voz';
+      btnVoz.textContent = '▶';
+      btnVoz.dataset.estado = 'none';
+      btnVoz.addEventListener('click', function(){ reproducirVoz(texto, btnVoz); });
+      div.appendChild(btnVoz);
+    }
+
     mensajesEl.appendChild(div);
-    // scroll automático al último mensaje
     mensajesEl.scrollTop = mensajesEl.scrollHeight;
   }
 
@@ -241,5 +254,79 @@
     if(e.key === 'Enter') enviarMensaje();
   });
 
+  // --- Reproducción de voz por mensaje (calcado de la web) ---
+  function reproducirVoz(texto, btn){
+    var estado = btn.dataset.estado;
+
+    // Si todavía no se generó el audio, lo pedimos a Python
+    if(estado === 'none'){
+      btn.textContent = '…';
+      btn.disabled = true;
+      btn.dataset.estado = 'generating';
+
+      window.pywebview.api.generar_voz(texto).then(function(b64){
+        if(!b64){
+          btn.textContent = '▶';
+          btn.disabled = false;
+          btn.dataset.estado = 'none';
+          return;
+        }
+        // convertimos el base64 a audio reproducible
+        var audio = new Audio('data:audio/wav;base64,' + b64);
+        btn._audio = audio;
+        btn._pauseTimeout = null;
+        btn.disabled = false;
+        btn.textContent = '▶';
+        btn.dataset.estado = 'ready';
+
+        audio.onended = function(){
+          btn.textContent = '▶';
+          btn.dataset.estado = 'ready';
+          if(btn._pauseTimeout) clearTimeout(btn._pauseTimeout);
+          modo = 'reposo';
+        };
+
+        // arrancamos a reproducir de una
+        audio.play();
+        btn.textContent = '⏸';
+        btn.dataset.estado = 'playing';
+        modo = 'hablando'; // la presencia reacciona mientras habla
+      });
+      return;
+    }
+
+    var audio = btn._audio;
+    if(!audio) return;
+
+    if(btn.dataset.estado === 'playing'){
+      // pausar
+      audio.pause();
+      btn.textContent = '▶';
+      btn.dataset.estado = 'paused';
+      modo = 'reposo';
+      // si no le dan play en 15s, se resetea
+      btn._pauseTimeout = setTimeout(function(){
+        audio.pause();
+        audio.currentTime = 0;
+        btn.textContent = '▶';
+        btn.dataset.estado = 'ready';
+      }, 15000);
+
+    } else if(btn.dataset.estado === 'paused'){
+      // reanudar
+      if(btn._pauseTimeout){ clearTimeout(btn._pauseTimeout); btn._pauseTimeout = null; }
+      audio.play();
+      btn.textContent = '⏸';
+      btn.dataset.estado = 'playing';
+      modo = 'hablando';
+
+    } else if(btn.dataset.estado === 'ready'){
+      // reproducir de nuevo desde cero
+      audio.play();
+      btn.textContent = '⏸';
+      btn.dataset.estado = 'playing';
+      modo = 'hablando';
+    }
+  }
 
 })();

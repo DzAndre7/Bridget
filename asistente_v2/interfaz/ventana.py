@@ -48,6 +48,23 @@ class API:
             print(f"Error procesando mensaje: {e}")
             return "Tuve un problema procesando eso."
 
+    def generar_voz(self, texto):
+        """Genera el audio de una respuesta con Enceladus y lo devuelve en base64."""
+        import base64
+        from core import voice
+        try:
+            # Reusamos la generación de voice.py: genera el archivo
+            ruta = voice.generar_audio(texto)
+            if not ruta:
+                return ""
+            with open(ruta, "rb") as f:
+                audio_bytes = f.read()
+            # lo codificamos en base64 para pasarlo por el puente
+            return base64.b64encode(audio_bytes).decode("utf-8")
+        except Exception as e:
+            print(f"Error generando voz: {e}")
+            return ""
+
 
 def abrir_ventana():
     api = API()

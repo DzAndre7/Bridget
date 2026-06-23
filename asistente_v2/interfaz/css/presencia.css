@@ -239,3 +239,26 @@ html, body {
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(60,200,210,0.5);
 }
+
+.btn-voz {
+  margin-top: 6px;
+  background: rgba(40,140,150,0.25);
+  border: 0.5px solid rgba(60,200,210,0.4);
+  color: rgb(90,210,220);
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+}
+.btn-voz:hover {
+  background: rgba(40,140,150,0.45);
+}
+.btn-voz:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
