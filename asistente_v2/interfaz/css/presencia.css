@@ -309,3 +309,38 @@ html, body {
   0%, 100% { box-shadow: 0 0 6px rgba(220,60,60,0.4); }
   50% { box-shadow: 0 0 14px rgba(220,60,60,0.8); }
 }
+
+#btn-manoslibres {
+  background: rgba(40,140,150,0.3);
+  border: 0.5px solid rgba(60,200,210,0.45);
+  color: rgb(90,210,220);
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 15px;
+  transition: background 0.2s;
+}
+#btn-manoslibres:hover {
+  background: rgba(40,140,150,0.5);
+}
+#btn-manoslibres.activo {
+  background: rgba(60,200,210,0.5);
+  border-color: rgba(90,220,230,0.9);
+  color: #fff;
+  animation: pulso-ml 2s infinite;
+}
+@keyframes pulso-ml {
+  0%, 100% { box-shadow: 0 0 8px rgba(60,200,210,0.4); }
+  50% { box-shadow: 0 0 16px rgba(60,200,210,0.8); }
+}
+
+/* Modo manos libres: chat tenue, presencia protagonista */
+#escenario.manoslibres #mensajes {
+  opacity: 0.4;
+  transition: opacity 0.5s;
+}
+#escenario.manoslibres #mensajes:hover {
+  opacity: 1;  /* al pasar el mouse, se ve claro si querés leer */
+}

@@ -392,4 +392,46 @@
     // Shift+Enter hace salto de línea normal (no hacemos nada, comportamiento default)
   });
 
+  // --- Modo manos libres ---
+  var btnML = document.getElementById('btn-manoslibres');
+  var manosLibresActivo = false;
+
+  btnML.addEventListener('click', function(){
+    if(!(window.pywebview && window.pywebview.api)) return;
+
+    if(!manosLibresActivo){
+      window.pywebview.api.iniciar_manos_libres().then(function(ok){
+        if(ok){
+          manosLibresActivo = true;
+          btnML.classList.add('activo');
+          escenario.classList.add('manoslibres');
+          modo = 'reposo';  // la presencia queda atenta
+        }
+      });
+    } else {
+      window.pywebview.api.detener_manos_libres().then(function(){
+        manosLibresActivo = false;
+        btnML.classList.remove('activo');
+        escenario.classList.remove('manoslibres');
+      });
+    }
+  });
+
+  // Esta función la llama el hilo de Python cuando transcribe tu voz
+  window.recibirVozManosLibres = function(texto){
+    if(!texto) return;
+    // mostramos tu mensaje en el chat
+    agregarMensaje(texto, 'user');
+    modo = 'hablando';  // la presencia se activa: Bridget va a procesar
+
+    // pedimos la respuesta al cerebro
+    window.pywebview.api.enviar_mensaje(texto).then(function(respuesta){
+      agregarMensaje(respuesta, 'bridget');
+      // Bridget habla la respuesta (esto pausa la escucha mientras suena)
+      window.pywebview.api.hablar_respuesta(respuesta).then(function(){
+        modo = 'reposo';  // terminó de hablar, vuelve a escuchar
+      });
+    });
+  };
+
 })();

@@ -84,10 +84,42 @@ class API:
             print(f"Error deteniendo micrófono: {e}")
             return ""
 
+    def iniciar_manos_libres(self):
+        from core import manos_libres
+        try:
+            manos_libres.iniciar()
+            return True
+        except Exception as e:
+            print(f"Error iniciando manos libres: {e}")
+            return False
+
+    def detener_manos_libres(self):
+        from core import manos_libres
+        try:
+            manos_libres.detener()
+            return True
+        except Exception as e:
+            print(f"Error deteniendo manos libres: {e}")
+            return False
+
+    def hablar_respuesta(self, texto):
+        """Genera y reproduce la voz de una respuesta, pausando la escucha mientras suena."""
+        from core import manos_libres, voice
+        try:
+            manos_libres.pausar()        # dejamos de escuchar mientras habla
+            voice.hablar(texto)          # genera (Enceladus) y reproduce, bloquea hasta terminar
+            manos_libres.reanudar()      # volvemos a escuchar
+            return True
+        except Exception as e:
+            print(f"Error hablando respuesta: {e}")
+            from core import manos_libres
+            manos_libres.reanudar()      # por las dudas, reanudamos aunque falle
+            return False
+
 
 def abrir_ventana():
     api = API()
-    webview.create_window(
+    ventana = webview.create_window(
         title="Bridget",
         url=RUTA_HTML,
         width=500,
@@ -97,6 +129,8 @@ def abrir_ventana():
         transparent=True,
         js_api=api
     )
+    from core import manos_libres
+    manos_libres.configurar_ventana(ventana)
     webview.start()
 
 
