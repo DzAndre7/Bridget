@@ -50,11 +50,6 @@ def listar_notas():
     notas = [n for n in vault.rglob("*.md") if _es_nota_valida(n)]
     return notas
    
-    vault = _get_vault_path()
-    # rglob busca recursivamente en todas las subcarpetas
-    notas = list(vault.rglob("*.md"))
-    return notas
-
 
 def leer_nota(nombre):
     """
@@ -130,16 +125,20 @@ def _limpiar_nombre_archivo(titulo):
     return limpio
 
 
-def _construir_nota(titulo, contenido, origen, enlaces=None):
+def _construir_nota(titulo, contenido, origen, enlaces=None, tags=None):
     """
     Arma el texto markdown completo de una nota con formato consistente:
-    título, contenido, y un bloque de metadatos al final.
-    'origen' indica de dónde salió (ej: 'conversación', 'estimación').
-    'enlaces' es una lista de nombres de notas a enlazar con [[ ]].
+    título, contenido, tags, y un bloque de metadatos al final.
+    'tags' es una lista de etiquetas (sin #, se agregan acá).
     """
     fecha = datetime.now().strftime("%Y-%m-%d %H:%M")
 
-    # armamos los enlaces [[ ]] si los hay
+    # bloque de tags al estilo Obsidian (#tag)
+    bloque_tags = ""
+    if tags:
+        linea_tags = " ".join(f"#{t}" for t in tags)
+        bloque_tags = f"\n\n{linea_tags}"
+
     bloque_enlaces = ""
     if enlaces:
         lineas_enlace = "\n".join(f"[[{e}]]" for e in enlaces)
@@ -147,7 +146,7 @@ def _construir_nota(titulo, contenido, origen, enlaces=None):
 
     nota = f"""# {titulo}
 
-{contenido}{bloque_enlaces}
+{contenido}{bloque_tags}{bloque_enlaces}
 
 ---
 *Creado: {fecha}*
@@ -155,32 +154,30 @@ def _construir_nota(titulo, contenido, origen, enlaces=None):
 """
     return nota
 
-
-def guardar_nota(titulo, contenido, carpeta="conversaciones", enlaces=None):
+def guardar_nota(titulo, contenido, carpeta="conversaciones", enlaces=None, tags=None):
     """
     Guardado DIRECTO: crea una nota de pleno derecho en el vault.
     Es lo que se usa cuando VOS decís 'guardá esto'.
     Devuelve la ruta de la nota creada, o None si falló.
 
-    carpeta: subcarpeta destino ('conversaciones', 'conocimiento', etc.)
+    carpeta: subcarpeta destino (la categoría: 'personal', 'conocimiento', etc.)
     enlaces: lista opcional de notas a relacionar con [[ ]]
+    tags: lista opcional de etiquetas para la nota
     """
     vault = _get_vault_path()
     nombre = _limpiar_nombre_archivo(titulo)
     destino = vault / carpeta
 
-    # creamos la subcarpeta si no existe (ej: primera vez que se usa)
     destino.mkdir(parents=True, exist_ok=True)
 
     ruta = destino / f"{nombre}.md"
 
-    # si ya existe una nota con ese nombre, no la pisamos: agregamos sufijo
     contador = 2
     while ruta.exists():
         ruta = destino / f"{nombre} ({contador}).md"
         contador += 1
 
-    texto = _construir_nota(titulo, contenido, origen="conversación", enlaces=enlaces)
+    texto = _construir_nota(titulo, contenido, origen="conversación", enlaces=enlaces, tags=tags)
 
     try:
         ruta.write_text(texto, encoding="utf-8")
@@ -261,6 +258,83 @@ STOPWORDS = {
     "esto", "tiene", "hacer", "puede", "decime", "contame", "explicame",
     "explicáme", "decirme", "algo", "todo", "muy", "más", "mas", "pero",
 }
+
+# Categorías fijas del cerebro. De general a específico: por ahora estas cuatro
+# amplias; más adelante se subdivide con tags o subcarpetas según haga falta.
+CATEGORIAS_VALIDAS = {"personal", "conocimiento", "proyectos", "conversaciones"}
+
+
+def clasificar_nota(contenido, funcion_llm):
+    """
+    En una sola llamada al LLM, obtiene categoría, tags y título de una nota.
+    Devuelve un dict: {"categoria": str, "tags": [str], "titulo": str}.
+    'funcion_llm' es la función que consulta el modelo (se pasa como parámetro
+    para no acoplar cerebro.py con brain.py, igual que generar_titulo).
+
+    Tiene red de seguridad: si el modelo devuelve algo raro, cae a valores
+    por defecto seguros en vez de romper.
+    """
+    prompt = (
+        "Analizá esta nota y respondé EXACTAMENTE en este formato, sin agregar nada más:\n"
+        "CATEGORIA: <una de: personal, conocimiento, proyectos, conversaciones>\n"
+        "TAGS: <entre 2 y 4 palabras clave separadas por comas, sin #>\n"
+        "TITULO: <máximo 3 palabras>\n\n"
+        "Guía para la categoría:\n"
+        "- personal: datos del usuario, gustos, preferencias, su vida\n"
+        "- conocimiento: información factual, técnica, cosas aprendidas\n"
+        "- proyectos: código, tareas, cosas en las que trabaja\n"
+        "- conversaciones: charlas generales que no entran en las otras\n\n"
+        f"Nota:\n{contenido[:600]}"
+    )
+
+    # valores por defecto seguros, por si algo falla
+    resultado = {
+        "categoria": "conversaciones",
+        "tags": [],
+        "titulo": "Nota sin titulo"
+    }
+
+    try:
+        respuesta = funcion_llm(prompt).strip()
+    except Exception:
+        return resultado
+
+    # parseamos línea por línea, buscando cada campo
+    for linea in respuesta.splitlines():
+        linea = linea.strip()
+        arriba = linea.upper()
+
+        if arriba.startswith("CATEGORIA:"):
+            cat = linea.split(":", 1)[1].strip().lower()
+            # solo aceptamos categorías válidas; si inventó otra, queda el default
+            if cat in CATEGORIAS_VALIDAS:
+                resultado["categoria"] = cat
+
+        elif arriba.startswith("TAGS:"):
+            crudo = linea.split(":", 1)[1].strip()
+            # separamos por coma, limpiamos, sacamos '#' si lo puso igual
+            tags = [
+                t.strip().lstrip("#").replace(" ", "_")
+                for t in crudo.split(",")
+                if t.strip()
+            ]
+            # respetamos el rango 2-4: recortamos si se zarpó
+            resultado["tags"] = tags[:4]
+
+        elif arriba.startswith("TITULO:"):
+            titulo = linea.split(":", 1)[1].strip().strip('"\'.:').strip()
+            palabras = titulo.split()
+            if len(palabras) > 3:
+                palabras = palabras[:3]
+            # sacamos conectores sueltos al final (evita títulos como "Horario nocturno y")
+            conectores = {"y", "o", "e", "u", "de", "con", "en", "a", "el", "la"}
+            while palabras and palabras[-1].lower() in conectores:
+                palabras.pop()
+            titulo = " ".join(palabras)
+            if titulo:
+                resultado["titulo"] = titulo
+
+    return resultado
 
 def consultar_cerebro(texto, max_notas=3):
     """

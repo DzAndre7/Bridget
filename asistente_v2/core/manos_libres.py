@@ -108,6 +108,7 @@ def _ciclo():
 
         # Si transcribió algo, avisamos a la ventana para que lo procese
         if texto and texto.strip() and _ventana is not None:
+            pausar()
             # Escapamos el texto para meterlo seguro en JS
             texto_seguro = texto.strip().replace("\\", "\\\\").replace("'", "\\'").replace("\n", " ")
             try:

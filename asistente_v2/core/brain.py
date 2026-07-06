@@ -629,18 +629,23 @@ def procesar_comando(texto, assistant_name):
         if not ultima_respuesta:
             return "No tengo nada reciente para guardar todavía. Decime algo primero y después pedime que lo guarde."
 
-        # Generamos un título corto con el LLM.
-        # Le pasamos consultar_llama como la función que consulta el modelo.
-        titulo = cerebro.generar_titulo(ultima_respuesta, consultar_llama)
+        # Clasificamos la nota: en una sola llamada al LLM obtenemos
+        # título, categoría (carpeta) y tags. Reemplaza a generar_titulo.
+        clasificacion = cerebro.clasificar_nota(ultima_respuesta, consultar_llama)
+        titulo = clasificacion["titulo"]
+        categoria = clasificacion["categoria"]
+        tags = clasificacion["tags"]
 
         ruta = cerebro.guardar_nota(
             titulo=titulo,
             contenido=ultima_respuesta,
-            carpeta="conversaciones"
+            carpeta=categoria,      # la categoría decide la subcarpeta
+            tags=tags
         )
-
         if ruta:
-            return f"Guardado en tu cerebro como «{titulo}»."
+            # armamos un mensaje que muestra dónde y cómo lo guardó
+            texto_tags = (" con tags " + ", ".join(tags)) if tags else ""
+            return f"Guardado en «{categoria}» como «{titulo}»{texto_tags}."
         else:
             return "Quise guardarlo pero algo falló al escribir la nota."
 
