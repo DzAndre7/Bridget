@@ -10,9 +10,12 @@ from core.listen import escuchar_audio
 from core.voice import generar_audio
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from starlette.background import BackgroundTask
 
 import os
 import io
+import uuid
+import tempfile
 
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -34,10 +37,11 @@ async def audio(file: UploadFile = File(...), x_api_key: str = Header(None)):
     if x_api_key != API_KEY:
         raise HTTPException(status_code=401, detail="No autorizado")
 
+    ruta_temp = os.path.join(tempfile.gettempdir(), f"bridget_audio_api_{uuid.uuid4().hex}.wav")
     try:
         contenido = await file.read()
 
-        ruta_temp = "/tmp/bridget_audio_api.wav"
+        # archivo único por request: dos audios concurrentes no se pisan
         with open(ruta_temp, "wb") as f:
             f.write(contenido)
 
@@ -53,6 +57,9 @@ async def audio(file: UploadFile = File(...), x_api_key: str = Header(None)):
         }
     except Exception as e:
         return {"error": str(e)}
+    finally:
+        if os.path.exists(ruta_temp):
+            os.remove(ruta_temp)
 
 
 @app.get("/")
@@ -187,10 +194,12 @@ async def speak(mensaje: Mensaje, x_api_key: str = Header(None)):
         if not ruta_audio or not os.path.exists(ruta_audio):
             raise HTTPException(status_code=500, detail="Error generando audio")
 
+        # borramos el wav temporal una vez enviado, para no llenar /tmp
         return FileResponse(
             path=ruta_audio,
             media_type="audio/wav",
-            filename="respuesta.wav"
+            filename="respuesta.wav",
+            background=BackgroundTask(os.remove, ruta_audio)
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

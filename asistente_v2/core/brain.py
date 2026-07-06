@@ -1,4 +1,5 @@
 import datetime
+import re
 import unicodedata
 import ollama
 import subprocess
@@ -26,6 +27,26 @@ ESPERANDO_CONFIRMACION_TAREA = False
 PLAN_PENDIENTE = ""
 PLAN_NOMBRE = ""
 DEBUG_MODE = False
+
+# Tope de mensajes que mandamos al modelo. Sin esto el historial crece sin
+# límite: cada turno se hace más lento y más caro, y termina desbordando la
+# ventana de contexto. 20 = ~10 intercambios recientes.
+MAX_HISTORIAL = 20
+
+# El contexto del proyecto (context.md) es estático: lo leemos una sola vez y
+# lo cacheamos, en vez de tocar disco en cada turno de conversación.
+_CONTEXTO_PROYECTO = None
+
+def _cargar_contexto_proyecto():
+    global _CONTEXTO_PROYECTO
+    if _CONTEXTO_PROYECTO is None:
+        ruta = os.path.join(os.path.dirname(__file__), "..", "context.md")
+        try:
+            with open(ruta, "r", encoding="utf-8") as f:
+                _CONTEXTO_PROYECTO = f.read()
+        except Exception:
+            _CONTEXTO_PROYECTO = ""
+    return _CONTEXTO_PROYECTO
 
 def normalizar_texto(texto):
     texto = texto.lower()
@@ -88,28 +109,30 @@ def es_intencion_busqueda(texto):
 def extraer_consulta_busqueda(texto, assistant_name):
     texto = limpiar_texto_base(texto, assistant_name)
 
-    palabras_a_sacar = [
+    palabras_a_sacar = {
         "buscar", "busca", "buscá", "buscame", "búscame",
         "encontrar", "encontra", "encontrá",
         "averiguar", "averigua", "averiguá",
         "internet", "google", "web", "online",
+    }
+
+    # nos quedamos solo con las palabras que no son "comando de búsqueda".
+    # (Antes, si la consulta eran TODAS palabras de comando, `consulta` quedaba
+    # sin asignar y esto lanzaba UnboundLocalError, rompiendo procesar_comando.)
+    consulta_limpia = [
+        p.strip(" ,¿?.,;:!") for p in texto.split()
+        if p.strip(" ,¿?.,;:!").lower() not in palabras_a_sacar
     ]
 
-    palabras = texto.split()
-    consulta_limpia = []
+    consulta = " ".join(" ".join(consulta_limpia).split()).strip()
 
-    for palabra in palabras:
-        palabra_limpia = palabra.strip(" ,¿?.,;:!").lower()
-
-        if palabra_limpia not in palabras_a_sacar:
-            consulta_limpia.append(palabra.strip(" ,¿?.,;:!"))
-
-            consulta = " ".join(consulta_limpia).strip()
-            consulta = " ".join(consulta.split())
-
-            for sufijo in [" en la", " en el", " en"]: 
-                if consulta.endswith(sufijo):
-                    consulta = consulta[:-len(sufijo)].strip()
+    # sacamos conectores sueltos que hayan quedado al inicio o al final
+    for sufijo in (" en la", " en el", " en"):
+        if consulta.endswith(sufijo):
+            consulta = consulta[: -len(sufijo)].strip()
+    for prefijo in ("en la ", "en el ", "en "):
+        if consulta.startswith(prefijo):
+            consulta = consulta[len(prefijo):].strip()
 
     return consulta if consulta else None
 
@@ -355,31 +378,117 @@ def extraer_tipo_analisis(texto):
     return "completo"
 
 
-def consultar_llama(texto):
-    global HISTORIAL_CONVERSACION
-    contexto_proyecto = ""
-    ruta_contexto = os.path.join(os.path.dirname(__file__), "..", "context.md")
-    try:
-        with open(ruta_contexto, "r", encoding="utf-8") as f:
-            contexto_proyecto = f.read()
-    except:
-        pass
+# --- Streaming + TTS por frases -------------------------------------------
+# Sink opcional de voz: si está seteado (una función que consume un iterable de
+# frases), consultar_llama va entregando cada frase TERMINADA a medida que el
+# modelo la genera, para que el TTS empiece a hablar sin esperar la respuesta
+# completa. La capa de UI lo instala con usar_sink_de_frases().
+_frase_sink = None
+# Marca si el último turno se resolvió por streaming (ya se habló en vivo), para
+# que la UI no vuelva a reproducir la respuesta entera.
+ULTIMO_TURNO_STREAMEADO = False
+
+def usar_sink_de_frases(fn):
+    """Registra (o limpia con None) el sink de voz por frases."""
+    global _frase_sink
+    _frase_sink = fn
+
+
+def limpiar_para_tts(texto):
+    """Saca marcado Markdown que no debería leerse en voz alta."""
+    texto = re.sub(r'`+', '', texto)
+    texto = re.sub(r'\*+', '', texto)
+    texto = re.sub(r'#+\s*', '', texto)
+    texto = re.sub(r'^\s*\d+\.\s+', '', texto, flags=re.MULTILINE)
+    texto = re.sub(r'^\s*[-•]\s+', '', texto, flags=re.MULTILINE)
+    return texto.strip()
+
+
+_FIN_ORACION = re.compile(r'[.!?…]+["\'”’)\]]?\s+|\n+')
+
+def _extraer_oraciones(buffer):
+    """Corta oraciones COMPLETAS del buffer. Devuelve (oraciones, resto)."""
+    oraciones = []
+    ultimo = 0
+    for m in _FIN_ORACION.finditer(buffer):
+        oraciones.append(buffer[ultimo:m.end()])
+        ultimo = m.end()
+    return oraciones, buffer[ultimo:]
+
+
+def frasear(tokens):
+    """Agrupa un stream de fragmentos de texto en frases listas para hablar.
+    Salta los bloques de código (```) y avisa una sola vez que hay código en
+    pantalla, en vez de leerlo en voz alta."""
+    buffer = ""
+    en_codigo = False
+    aviso_dado = False
+    for tok in tokens:
+        if not tok:
+            continue
+        buffer += tok
+        while "```" in buffer:
+            idx = buffer.find("```")
+            if not en_codigo:
+                oraciones, _ = _extraer_oraciones(buffer[:idx])
+                for o in oraciones:
+                    o = limpiar_para_tts(o)
+                    if o:
+                        yield o
+                buffer = buffer[idx + 3:]
+                en_codigo = True
+                if not aviso_dado:
+                    aviso_dado = True
+                    yield "Revisá el código en pantalla."
+            else:
+                buffer = buffer[idx + 3:]
+                en_codigo = False
+        if en_codigo:
+            buffer = buffer[-2:]  # dentro de código: nada que hablar (deja cola por ``` partido)
+            continue
+        oraciones, buffer = _extraer_oraciones(buffer)
+        for o in oraciones:
+            o = limpiar_para_tts(o)
+            if o:
+                yield o
+    if not en_codigo:
+        o = limpiar_para_tts(buffer)
+        if o:
+            yield o
+
+
+def _preparar_sistema(texto):
+    """Construye el system prompt (identidad + memoria + cerebro + contexto del
+    proyecto) y agrega el turno del usuario al historial. Devuelve el system prompt."""
+    contexto_proyecto = _cargar_contexto_proyecto()  # cacheado, no toca disco cada turno
     if DEBUG_MODE:
         print(f"DEBUG CONTEXTO: {contexto_proyecto[:100] if contexto_proyecto else 'VACÍO'}")
 
     recuerdos = leer_recuerdos()
     contexto_memoria = "; ".join(recuerdos) if recuerdos else ""
 
-    # Buscar recuerdos semánticos relevantes para el momento actual
-    recuerdos_semanticos = recordar(texto[:500], top_k=3)
+    # Buscar recuerdos semánticos relevantes. Si ollama/embeddings falla, no
+    # rompemos la respuesta entera: seguimos sin recuerdos semánticos.
+    try:
+        recuerdos_semanticos = recordar(texto[:500], top_k=3)
+    except Exception as e:
+        if DEBUG_MODE:
+            print(f"DEBUG SEMANTICA FALLÓ: {e}")
+        recuerdos_semanticos = []
     if DEBUG_MODE:
         print(f"DEBUG SEMANTICA: {[r['texto'][:40] for r in recuerdos_semanticos]}")
     if recuerdos_semanticos:
         contexto_semantico = "\n".join([f"- {r['texto']}" for r in recuerdos_semanticos])
         contexto_memoria = contexto_memoria + "\n\nRecuerdos relevantes para este momento:\n" + contexto_semantico if contexto_memoria else "Recuerdos relevantes para este momento:\n" + contexto_semantico
 
-    # Buscar en el cerebro (vault de Obsidian) notas relevantes
-    notas_cerebro = cerebro.consultar_cerebro(texto, max_notas=3)
+    # Buscar en el cerebro (vault de Obsidian) notas relevantes. También
+    # blindado: un vault mal configurado no debe tumbar la conversación.
+    try:
+        notas_cerebro = cerebro.consultar_cerebro(texto, max_notas=3)
+    except Exception as e:
+        if DEBUG_MODE:
+            print(f"DEBUG CEREBRO FALLÓ: {e}")
+        notas_cerebro = []
     if DEBUG_MODE:
         print(f"DEBUG CEREBRO: {[n['titulo'] for n in notas_cerebro]}")
 
@@ -420,15 +529,61 @@ def consultar_llama(texto):
         sistema += f"\n\nContexto de tu arquitectura y proyecto:\n{contexto_proyecto}"
 
     HISTORIAL_CONVERSACION.append({"role": "user", "content": texto})
+    return sistema
 
-    respuesta = ollama.chat(
-        model="dolphin3:8b",
-        messages=[{"role": "system", "content": sistema}] + HISTORIAL_CONVERSACION
-    )
-    contenido = respuesta["message"]["content"]
-    HISTORIAL_CONVERSACION.append({"role": "assistant", "content": contenido})
-    guardar_interaccion(texto, contenido)
-    return contenido
+
+def consultar_llama_stream(texto):
+    """Consulta al LLM en modo streaming: cede los fragmentos de texto a medida
+    que el modelo los genera. Actualiza historial y dataset al terminar (incluso
+    si el stream se corta a mitad)."""
+    sistema = _preparar_sistema(texto)
+    partes = []
+    try:
+        # Solo mandamos los últimos MAX_HISTORIAL mensajes: acota latencia, costo
+        # y evita desbordar la ventana de contexto en charlas largas.
+        stream = ollama.chat(
+            model="dolphin3:8b",
+            messages=[{"role": "system", "content": sistema}] + HISTORIAL_CONVERSACION[-MAX_HISTORIAL:],
+            stream=True,
+        )
+        for chunk in stream:
+            parte = chunk["message"]["content"]
+            if parte:
+                partes.append(parte)
+                yield parte
+    finally:
+        if partes:
+            contenido = "".join(partes)
+            HISTORIAL_CONVERSACION.append({"role": "assistant", "content": contenido})
+            if len(HISTORIAL_CONVERSACION) > MAX_HISTORIAL:
+                del HISTORIAL_CONVERSACION[:-MAX_HISTORIAL]
+            guardar_interaccion(texto, contenido)
+
+
+def consultar_llama(texto):
+    """Devuelve la respuesta completa como string (contrato original, usado por
+    todo procesar_comando). Si hay un sink de voz activo, además va hablando por
+    frases mientras el modelo genera, sin esperar la respuesta completa."""
+    global ULTIMO_TURNO_STREAMEADO
+    gen = consultar_llama_stream(texto)
+
+    if _frase_sink is None:
+        ULTIMO_TURNO_STREAMEADO = False
+        return "".join(gen)
+
+    partes = []
+    def _captura():
+        for t in gen:
+            partes.append(t)
+            yield t
+    try:
+        # el sink consume las frases (y con ellas el stream) hablando en pipeline
+        _frase_sink(frasear(_captura()))
+    finally:
+        for _ in gen:  # garantiza agotar el generador (guarda historial/dataset)
+            pass
+    ULTIMO_TURNO_STREAMEADO = True
+    return "".join(partes)
 
 def leer_archivo(ruta):
     try: 
@@ -444,11 +599,16 @@ def procesar_comando(texto, assistant_name):
     global PLAN_PENDIENTE
     global OPCIONES_PENDIENTES
     global  PLAN_NOMBRE
+    global ULTIMO_TURNO_STREAMEADO
 
-    if DEBUG_MODE: 
+    # arranca en False cada turno: solo consultar_llama con sink lo pone en True.
+    # Así las respuestas determinísticas (hora, saludo, etc.) las habla la UI.
+    ULTIMO_TURNO_STREAMEADO = False
+
+    if DEBUG_MODE:
         print(f"DEBUG - ESPERANDO_TAREA: {ESPERANDO_CONFIRMACION_TAREA} | texto: {texto}")
 
-    texto_original = texto 
+    texto_original = texto
 
     if ESPERANDO_CONFIRMACION_TAREA:
         if DEBUG_MODE:

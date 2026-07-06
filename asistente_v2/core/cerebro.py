@@ -353,39 +353,40 @@ def consultar_cerebro(texto, max_notas=3):
         p.strip("¿?¡!.,;:") for p in texto.lower().split()
         if len(p) > 3 and p.strip("¿?¡!.,;:") not in STOPWORDS
     ]
-
-    notas_encontradas = {}  # usamos dict para no repetir la misma nota
-
-    for palabra in palabras:
-        resultados = buscar_en_notas(palabra)
-        for r in resultados:
-            # la clave es la ruta, así una nota que matchea varias palabras
-            # no se duplica, pero sí sube su relevancia (la contamos)
-            ruta = r["ruta"]
-            if ruta not in notas_encontradas:
-                notas_encontradas[ruta] = {"datos": r, "matches": 0}
-            notas_encontradas[ruta]["matches"] += 1
-
-    if not notas_encontradas:
+    if not palabras:
         return []
 
-    # ordenamos por cuántas palabras de la consulta matchearon: más matches,
-    # más relevante la nota
-    ordenadas = sorted(
-        notas_encontradas.values(),
-        key=lambda x: x["matches"],
-        reverse=True
-    )
+    # Si el vault no está configurado o no existe, no rompemos la respuesta
+    # entera: esta función corre en CADA turno de conversación.
+    try:
+        vault = _get_vault_path()
+    except Exception:
+        return []
 
-    # tomamos las top y leemos su contenido completo para dárselo al LLM
-    resultado = []
-    for item in ordenadas[:max_notas]:
-        nombre_nota = item["datos"]["nota"]
-        contenido = leer_nota(nombre_nota)
-        if contenido:
-            resultado.append({
-                "titulo": nombre_nota.replace(".md", ""),
-                "contenido": contenido
-            })
+    # UNA sola pasada por el disco: leemos cada nota una vez y contamos cuántas
+    # palabras de la consulta matchean. (Antes se releía todo el vault una vez
+    # por palabra, y luego otra vez para levantar el contenido de las top.)
+    puntuadas = []
+    for nota in vault.rglob("*.md"):
+        if not _es_nota_valida(nota):
+            continue
+        try:
+            contenido = nota.read_text(encoding="utf-8")
+        except Exception:
+            continue  # una nota rota no debe frenar la búsqueda
 
-    return resultado
+        contenido_lower = contenido.lower()
+        matches = sum(1 for p in palabras if p in contenido_lower)
+        if matches:
+            puntuadas.append((matches, nota.name, contenido))
+
+    if not puntuadas:
+        return []
+
+    # más palabras de la consulta matcheadas => nota más relevante
+    puntuadas.sort(key=lambda x: x[0], reverse=True)
+
+    return [
+        {"titulo": nombre.replace(".md", ""), "contenido": contenido}
+        for _, nombre, contenido in puntuadas[:max_notas]
+    ]

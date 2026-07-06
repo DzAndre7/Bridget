@@ -3,12 +3,24 @@ import datetime
 sys.stdout.reconfigure(encoding="utf-8")
 
 from config import ASSISTANT_NAME
-from core.brain import procesar_comando, consultar_llama
+import core.brain as brain
+from core.brain import procesar_comando, consultar_llama, usar_sink_de_frases
 from core.memory import obtener_nombre_preferido, guardar_recuerdo
-from core.voice import hablar, hablar_interrumpible
+from core.voice import hablar, hablar_interrumpible, hablar_por_frases
 from core.listen import escuchar
 
 VOZ_ACTIVADA = True
+
+
+def _hablar_respuesta(respuesta):
+    """Habla una respuesta que NO pasó por el streaming (intención determinística).
+    Si el turno ya se resolvió por streaming, no hace nada: ya se habló en vivo."""
+    if brain.ULTIMO_TURNO_STREAMEADO:
+        return
+    if "```" in respuesta:
+        hablar("Revisá el código en pantalla.")
+    else:
+        hablar(limpiar_para_tts(respuesta))
 
 def limpiar_para_tts(texto):
     import re
@@ -33,6 +45,8 @@ def obtener_saludo():
 def modo_voz():
     print(f"{ASSISTANT_NAME}: Modo voz activado. Decí 'salir del modo voz' pàra volver.")
     hablar("Modo voz activado. Te escucho.")
+    # streaming: las respuestas del LLM se hablan por frases a medida que se generan
+    usar_sink_de_frases(hablar_por_frases)
 
     while True:
         texto = escuchar()
@@ -45,17 +59,14 @@ def modo_voz():
 
         texto_lower = texto.lower()
         if "salir" in texto_lower and ("voz" in texto_lower or "boss" in texto_lower or "modo" in texto_lower):
+            usar_sink_de_frases(None)
             hablar("Saliendo del modo voz.")
             print(f"{ASSISTANT_NAME}: Modo voz desactivado.")
             break
 
         respuesta = procesar_comando(texto, ASSISTANT_NAME)
         print(f"{ASSISTANT_NAME}: {respuesta}")
-
-        if "```" in respuesta:
-            hablar("Revisá el código en pantalla.")
-        else:
-            hablar(limpiar_para_tts(respuesta))
+        _hablar_respuesta(respuesta)
 
 import threading 
 
@@ -63,6 +74,9 @@ def modo_voz_interrumpible():
     from core.listen import escuchar_fragmento
     print(f"{ASSISTANT_NAME}: Modo voz activado. Decí 'salir del modo voz' para volver.")
     hablar("Modo voz activado. Te escucho.")
+    # este modo usa su propia reproducción interrumpible (barge-in) sobre la
+    # respuesta completa, así que desactivamos el sink de streaming por frases.
+    usar_sink_de_frases(None)
 
     while True:
         texto = escuchar()
@@ -114,7 +128,9 @@ def main():
     saludo = obtener_saludo()
     print(f"{ASSISTANT_NAME}: {saludo}")   
 
-    while True: 
+    while True:
+        # cada turno arranca sin sink; se instala solo para el chat normal de abajo
+        usar_sink_de_frases(None)
         nombre_usuario = obtener_nombre_preferido() or "André"
         user_input = input(f"{nombre_usuario}: ")
 
@@ -148,15 +164,14 @@ def main():
             print(f"{ASSISTANT_NAME}: Nos vemos.")
             break
 
-        respuesta = procesar_comando(user_input, ASSISTANT_NAME)   
+        # streaming por frases solo si la voz está activada
+        usar_sink_de_frases(hablar_por_frases if VOZ_ACTIVADA else None)
+        respuesta = procesar_comando(user_input, ASSISTANT_NAME)
         if respuesta is None:
             respuesta = "No pude generar una respuesta."
-        print(f"{ASSISTANT_NAME}: {respuesta}") 
+        print(f"{ASSISTANT_NAME}: {respuesta}")
         if VOZ_ACTIVADA:
-            if "```" in respuesta:
-                hablar("Revisá el código en pantalla.")
-            else:
-                hablar(limpiar_para_tts(respuesta))  
+            _hablar_respuesta(respuesta)
 
 if __name__ == "__main__":
     main()

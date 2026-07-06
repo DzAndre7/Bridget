@@ -11,7 +11,13 @@ DISPARADORES = [
     "llámame "
 ]
 
-MEMORY_FILE = "memory.json"
+# Ruta absoluta anclada a la raíz del proyecto (core/ -> asistente_v2/ -> raíz).
+# Antes era relativa ("memory.json"), así que apuntaba a un archivo distinto
+# según desde qué carpeta se lanzara la app (raíz vs. asistente_v2/ en la web).
+MEMORY_FILE = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "memory.json",
+)
 
 def cargar_recuerdos():
     if not os.path.exists(MEMORY_FILE):
