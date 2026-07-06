@@ -51,13 +51,13 @@ def _stub_entorno(monkeypatch, trozos):
 def test_consultar_llama_sin_sink_devuelve_texto_completo(monkeypatch):
     _stub_entorno(monkeypatch, ["Hola. ", "Todo ", "bien."])
     brain.usar_sink_de_frases(None)
-    brain.HISTORIAL_CONVERSACION.clear()
+    sesion = brain.Sesion()
 
-    r = brain.consultar_llama("hola")
+    r = brain.consultar_llama("hola", sesion)
     assert r == "Hola. Todo bien."
     assert brain.ULTIMO_TURNO_STREAMEADO is False
-    # el historial se actualizó con la respuesta
-    assert brain.HISTORIAL_CONVERSACION[-1] == {"role": "assistant", "content": "Hola. Todo bien."}
+    # el historial de la sesión se actualizó con la respuesta
+    assert sesion.historial[-1] == {"role": "assistant", "content": "Hola. Todo bien."}
 
 
 def test_consultar_llama_con_sink_entrega_frases(monkeypatch):
@@ -69,21 +69,21 @@ def test_consultar_llama_con_sink_entrega_frases(monkeypatch):
             recibidas.append(f)
 
     brain.usar_sink_de_frases(sink)
-    brain.HISTORIAL_CONVERSACION.clear()
+    sesion = brain.Sesion()
     try:
-        r = brain.consultar_llama("hola")
+        r = brain.consultar_llama("hola", sesion)
     finally:
         brain.usar_sink_de_frases(None)
 
     assert r == "Hola. Todo bien."                 # contrato: string completo
     assert recibidas == ["Hola.", "Todo bien."]    # frases entregadas en vivo
     assert brain.ULTIMO_TURNO_STREAMEADO is True
-    assert brain.HISTORIAL_CONVERSACION[-1]["content"] == "Hola. Todo bien."
+    assert sesion.historial[-1]["content"] == "Hola. Todo bien."
 
 
 def test_consultar_llama_stream_finaliza_historial(monkeypatch):
     _stub_entorno(monkeypatch, ["uno ", "dos ", "tres"])
-    brain.HISTORIAL_CONVERSACION.clear()
-    trozos = list(brain.consultar_llama_stream("contame"))
+    sesion = brain.Sesion()
+    trozos = list(brain.consultar_llama_stream("contame", sesion))
     assert "".join(trozos) == "uno dos tres"
-    assert brain.HISTORIAL_CONVERSACION[-1]["content"] == "uno dos tres"
+    assert sesion.historial[-1]["content"] == "uno dos tres"

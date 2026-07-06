@@ -25,13 +25,11 @@ def guardar_interaccion(pregunta, respuesta):
 def contar_ejemplos():
     if not os.path.exists(DATASET_FILE):
         return 0 
-    try: 
+    try:
         with open(DATASET_FILE, "r", encoding="utf-8") as f:
             return sum(1 for linea in f if linea.strip())
     except Exception:
         return 0
-
-        DATASET_MAESTRO_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "dataset_maestro.jsonl")
 
 def guardar_par_entrenamiento(codigo_original, propuesta_dolphin, revision_groq):
     try:

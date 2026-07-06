@@ -20,13 +20,28 @@ from core.dataset_collector import guardar_interaccion, guardar_par_entrenamient
 from core.code_reviewer import revisar_codigo
 from core.auditoria import auditar_proyecto
 
-HISTORIAL_CONVERSACION =  []
-OPCIONES_PENDIENTES = []
-ESPERANDO_CONFIRMACION_BORRADO = False
-ESPERANDO_CONFIRMACION_TAREA = False
-PLAN_PENDIENTE = ""
-PLAN_NOMBRE = ""
 DEBUG_MODE = False
+
+
+class Sesion:
+    """Estado mutable de UNA conversación: historial + flujo de confirmaciones.
+    Aislarlo en un objeto permite que la API atienda a varios clientes sin que
+    compartan historial ni confirmaciones. Antes eran globales de módulo y, con
+    la API expuesta por ngrok, dos usuarios concurrentes se pisaban el estado
+    (uno podía confirmar la tarea pendiente de otro, o ver su conversación)."""
+
+    def __init__(self):
+        self.historial = []
+        self.opciones_pendientes = []
+        self.esperando_confirmacion_borrado = False
+        self.esperando_confirmacion_tarea = False
+        self.plan_pendiente = ""
+        self.plan_nombre = ""
+
+
+# Sesión por defecto: la usa la CLI (un solo usuario) y cualquier llamada que no
+# pase una sesión explícita. La API crea una Sesion por cliente (X-Session-Id).
+_sesion_default = Sesion()
 
 # Tope de mensajes que mandamos al modelo. Sin esto el historial crece sin
 # límite: cada turno se hace más lento y más caro, y termina desbordando la
@@ -136,21 +151,30 @@ def extraer_consulta_busqueda(texto, assistant_name):
 
     return consulta if consulta else None
 
+def _contiene(texto, frases):
+    """True si alguna de `frases` aparece en `texto`, ignorando tildes.
+    detectar_intencion recibe el texto ya normalizado (sin tildes), así que
+    normalizamos cada frase para que las variantes con tilde también matcheen.
+    Antes, entradas como 'buscá' o 'guardá' en las listas nunca matcheaban y
+    solo funcionaban por estar duplicadas sin tilde: frágil de mantener."""
+    return any(normalizar_texto(f) in texto for f in frases)
+
+
 def detectar_intencion(texto):
     texto = texto.lower().strip()
 
-    if any(frase in texto for frase in [
+    if _contiene(texto, [
         "busca en internet", "buscá en internet", "busca online", "modo conectado", "busca en la web"
     ]):
         return "buscar_web"
 
     elif es_intencion_busqueda(texto):
         return "buscar_en_internet"
-    
+
     elif texto in ["s", "y", "confirmar borrado"]:
         return "confirmar_borrado"
-    
-    elif any(frase in texto for frase in [
+
+    elif _contiene(texto, [
         "guarda esto", "guardá esto", "guarda eso", "guardá eso",
         "anota esto", "anotá esto", "anota eso", "anotá eso",
         "guarda en tu cerebro", "guardá en tu cerebro",
@@ -158,72 +182,72 @@ def detectar_intencion(texto):
         "guarda esto en tu cerebro", "guardá esto en tu cerebro"
     ]):
         return "guardar_en_cerebro"
-    
-    elif any(frase in texto for frase in [
+
+    elif _contiene(texto, [
         "ejecutá", "ejecuta", "hacé", "hace", "abrí", "abri", "mandá", "manda", "escribile", "enviá", "envia", "inicia", "iniciá"
         ]):
         return "ejecutar_tarea"
-    
+
     elif ("borra" in texto or "olvida" in texto or "elimina" in texto) and ("todos" in texto or "toda" in texto) and ("recuerdos" in texto or "memoria" in texto):
         return "borrar_todos_los_recuerdos"
-    
-    elif "olvida que" in texto or "borra" in texto or "elimina" in texto: 
+
+    elif "olvida que" in texto or "borra" in texto or "elimina" in texto:
         return "olvidar_recuerdo"
-    
+
     elif ("record" in texto or "acord" in texto or "sabes" in texto or "recuerd" in texto) and "mi" in texto:
         return "leer_recuerdos"
-    
+
     elif "record" in texto or "acordate" in texto or "no te olvides" in texto:
         return "guardar_recuerdo"
 
-    elif any(frase in texto for frase in [
+    elif _contiene(texto, [
         "abrí opera", "abre opera", "abrir opera", "inicia opera", "iniciar opera"
     ]):
         return "abrir_opera"
 
-    elif any(frase in texto for frase in [
+    elif _contiene(texto, [
         "qué hora", "que hora", "hora", "tenés la hora", "tienes la hora"
     ]):
         return "consultar_hora"
 
-    elif any(frase in texto for frase in [
+    elif _contiene(texto, [
         "cómo te llamas", "como te llamas", "cuál es tu nombre", "cual es tu nombre",
         "nombre", "quién sos", "quien sos"
     ]):
         return "consultar_nombre"
-    
-    elif any(frase in texto for frase in [
+
+    elif _contiene(texto, [
     "hola", "buenas", "buen día", "buen dia", "buenas tardes", "buenas noches"
     ]):
         if len(texto.split()) < 4:
             return "saludo"
-    
-    elif "uso" in texto: 
+
+    elif "uso" in texto:
         return "guardar_preferencia"
-    
+
     elif "navegador" in texto:
         return "abrir_navegador"
 
-    elif any(frase in texto for frase in [
+    elif _contiene(texto, [
         "mirá mi pantalla", "mira mi pantalla", "mirá la pantalla", "mira la pantalla",
         "observá mi pantalla", "observa mi pantalla", "observá la pantalla",
         "qué ves en mi pantalla", "que ves en mi pantalla", "ves mi pantalla"
     ]):
         return "ver_pantalla"
 
-    elif any(frase in texto for frase in [
+    elif _contiene(texto, [
         "analiza mi proyecto", "analiza el proyecto", "analizá mi proyecto",
         "analiza /", "analizá /", "revisa el proyecto"
     ]):
         return "analizar_proyecto"
 
-    elif any(frase in texto for frase in [
+    elif _contiene(texto, [
         "analiza el archivo", "analiza el archivo", "analizá el archivo",
         "analiza /", "analizá /", "revisa el archivo"
     ]):
         return "analizar_archivo"
 
-    elif any(frase in texto for frase in [
+    elif _contiene(texto, [
         "solo errores", "solo seguridad", "solo optimizacion", "solo calidad",
         "solo errores de", "solo seguridad de", "busca errores", "busca vulnerabilidades"
     ]):
@@ -457,9 +481,10 @@ def frasear(tokens):
             yield o
 
 
-def _preparar_sistema(texto):
+def _preparar_sistema(texto, sesion):
     """Construye el system prompt (identidad + memoria + cerebro + contexto del
-    proyecto) y agrega el turno del usuario al historial. Devuelve el system prompt."""
+    proyecto) y agrega el turno del usuario al historial de la sesión.
+    Devuelve el system prompt."""
     contexto_proyecto = _cargar_contexto_proyecto()  # cacheado, no toca disco cada turno
     if DEBUG_MODE:
         print(f"DEBUG CONTEXTO: {contexto_proyecto[:100] if contexto_proyecto else 'VACÍO'}")
@@ -528,22 +553,23 @@ def _preparar_sistema(texto):
     if contexto_proyecto:
         sistema += f"\n\nContexto de tu arquitectura y proyecto:\n{contexto_proyecto}"
 
-    HISTORIAL_CONVERSACION.append({"role": "user", "content": texto})
+    sesion.historial.append({"role": "user", "content": texto})
     return sistema
 
 
-def consultar_llama_stream(texto):
+def consultar_llama_stream(texto, sesion=None):
     """Consulta al LLM en modo streaming: cede los fragmentos de texto a medida
-    que el modelo los genera. Actualiza historial y dataset al terminar (incluso
-    si el stream se corta a mitad)."""
-    sistema = _preparar_sistema(texto)
+    que el modelo los genera. Actualiza el historial de la sesión y el dataset al
+    terminar (incluso si el stream se corta a mitad)."""
+    sesion = sesion or _sesion_default
+    sistema = _preparar_sistema(texto, sesion)
     partes = []
     try:
         # Solo mandamos los últimos MAX_HISTORIAL mensajes: acota latencia, costo
         # y evita desbordar la ventana de contexto en charlas largas.
         stream = ollama.chat(
             model="dolphin3:8b",
-            messages=[{"role": "system", "content": sistema}] + HISTORIAL_CONVERSACION[-MAX_HISTORIAL:],
+            messages=[{"role": "system", "content": sistema}] + sesion.historial[-MAX_HISTORIAL:],
             stream=True,
         )
         for chunk in stream:
@@ -554,18 +580,18 @@ def consultar_llama_stream(texto):
     finally:
         if partes:
             contenido = "".join(partes)
-            HISTORIAL_CONVERSACION.append({"role": "assistant", "content": contenido})
-            if len(HISTORIAL_CONVERSACION) > MAX_HISTORIAL:
-                del HISTORIAL_CONVERSACION[:-MAX_HISTORIAL]
+            sesion.historial.append({"role": "assistant", "content": contenido})
+            if len(sesion.historial) > MAX_HISTORIAL:
+                del sesion.historial[:-MAX_HISTORIAL]
             guardar_interaccion(texto, contenido)
 
 
-def consultar_llama(texto):
+def consultar_llama(texto, sesion=None):
     """Devuelve la respuesta completa como string (contrato original, usado por
     todo procesar_comando). Si hay un sink de voz activo, además va hablando por
     frases mientras el modelo genera, sin esperar la respuesta completa."""
     global ULTIMO_TURNO_STREAMEADO
-    gen = consultar_llama_stream(texto)
+    gen = consultar_llama_stream(texto, sesion)
 
     if _frase_sink is None:
         ULTIMO_TURNO_STREAMEADO = False
@@ -592,35 +618,30 @@ def leer_archivo(ruta):
     except Exception as e: 
         return None
 
-def procesar_comando(texto, assistant_name):
-
-    global ESPERANDO_CONFIRMACION_BORRADO
-    global ESPERANDO_CONFIRMACION_TAREA
-    global PLAN_PENDIENTE
-    global OPCIONES_PENDIENTES
-    global  PLAN_NOMBRE
+def procesar_comando(texto, assistant_name, sesion=None):
     global ULTIMO_TURNO_STREAMEADO
+    sesion = sesion or _sesion_default
 
     # arranca en False cada turno: solo consultar_llama con sink lo pone en True.
     # Así las respuestas determinísticas (hora, saludo, etc.) las habla la UI.
     ULTIMO_TURNO_STREAMEADO = False
 
     if DEBUG_MODE:
-        print(f"DEBUG - ESPERANDO_TAREA: {ESPERANDO_CONFIRMACION_TAREA} | texto: {texto}")
+        print(f"DEBUG - ESPERANDO_TAREA: {sesion.esperando_confirmacion_tarea} | texto: {texto}")
 
     texto_original = texto
 
-    if ESPERANDO_CONFIRMACION_TAREA:
+    if sesion.esperando_confirmacion_tarea:
         if DEBUG_MODE:
             print(f"DEBUG ENTRANDO A CONFIRMACION con texto: '{texto_original}'")
 
-        if OPCIONES_PENDIENTES and texto_original.strip().lower() in ["a", "b", "c", "d"]:
+        if sesion.opciones_pendientes and texto_original.strip().lower() in ["a", "b", "c", "d"]:
             letras = ["a", "b", "c", "d"]
             indice = letras.index(texto_original.strip().lower())
-            if indice < len(OPCIONES_PENDIENTES):
-                nombre, comando = OPCIONES_PENDIENTES[indice]
-                ESPERANDO_CONFIRMACION_TAREA = False
-                OPCIONES_PENDIENTES.clear()
+            if indice < len(sesion.opciones_pendientes):
+                nombre, comando = sesion.opciones_pendientes[indice]
+                sesion.esperando_confirmacion_tarea = False
+                sesion.opciones_pendientes.clear()
                 if DEBUG_MODE:
                     print (f"DEBUG COMANDO: '{comando}'")
                     print (f"DEBUG ANTES DEL TRY")
@@ -635,65 +656,65 @@ def procesar_comando(texto, assistant_name):
                     return f"No pude abrir {nombre}."
 
         if texto_original.strip().lower().replace("í", "i") in ["si", "s", "yes", "y"]:
-            ESPERANDO_CONFIRMACION_TAREA = False
-            comando = ALIAS_PROGRAMAS.get(PLAN_PENDIENTE, None)
+            sesion.esperando_confirmacion_tarea = False
+            comando = ALIAS_PROGRAMAS.get(sesion.plan_pendiente, None)
             if not comando:
-                comando = shutil.which(PLAN_PENDIENTE)
+                comando = shutil.which(sesion.plan_pendiente)
             if not comando:
-                primera_palabra = PLAN_PENDIENTE.split()[0]
+                primera_palabra = sesion.plan_pendiente.split()[0]
                 comando = shutil.which(primera_palabra)
             if comando:
                 try:
                     subprocess.Popen([comando], env=os.environ.copy())
-                    return f"Ejecutando {PLAN_NOMBRE}..."
+                    return f"Ejecutando {sesion.plan_nombre}..."
                 except Exception as e:
                     if DEBUG_MODE:
                         print(f"DEBUG ERROR  KITTY: {type(e).__name__}: {e}")
-                    return f"No pude abrir {PLAN_PENDIENTE}."
+                    return f"No pude abrir {sesion.plan_pendiente}."
             else:
-                return f"No encontré {PLAN_PENDIENTE} en el sistema."
+                return f"No encontré {sesion.plan_pendiente} en el sistema."
         else:
-            ESPERANDO_CONFIRMACION_TAREA = False
-            PLAN_PENDIENTE = ""
+            sesion.esperando_confirmacion_tarea = False
+            sesion.plan_pendiente = ""
             return "Tarea cancelada."
 
     texto = normalizar_texto(texto)
     intencion = detectar_intencion(texto)
 
     if intencion == "ejecutar_tarea":
-        verificacion = consultar_llama(f"¿El siguiente mensaje pide explícitamente abir o ejecutar una aplicación o programa? Respondé solo 'sí' o 'no'. Mensaje: '{texto_original}'")
+        verificacion = consultar_llama(f"¿El siguiente mensaje pide explícitamente abir o ejecutar una aplicación o programa? Respondé solo 'sí' o 'no'. Mensaje: '{texto_original}'", sesion)
         if "no" in verificacion.lower():
-            return consultar_llama(texto_original)
+            return consultar_llama(texto_original, sesion)
         programa = extraer_programa_con_llama(texto_original)
         resultados = buscar_aplicaciones_sistema(programa)
-        
+
         if len(resultados) == 0:
             return f"No encontré ninguna aplicación que coincida con '{programa}' en el sistema."
-    
+
         elif len(resultados) == 1:
             nombre, comando = resultados[0]
-            ESPERANDO_CONFIRMACION_TAREA = True
-            PLAN_PENDIENTE = comando
-            PLAN_NOMBRE = nombre
-            return f"Encontré '{PLAN_NOMBRE}'. ¿Lo abro?"
-    
+            sesion.esperando_confirmacion_tarea = True
+            sesion.plan_pendiente = comando
+            sesion.plan_nombre = nombre
+            return f"Encontré '{sesion.plan_nombre}'. ¿Lo abro?"
+
         else:
             letras = ["a", "b", "c", "d",]
             opciones_texto = "\n".join([f"{letras[i]}) {nombre}" for i, (nombre, comando) in enumerate(resultados)])
-            OPCIONES_PENDIENTES = resultados
-            ESPERANDO_CONFIRMACION_TAREA = True
-            PLAN_PENDIENTE = "" 
+            sesion.opciones_pendientes = list(resultados)
+            sesion.esperando_confirmacion_tarea = True
+            sesion.plan_pendiente = ""
             return f"Encontré varias opciones:\n{opciones_texto}\n¿CUál querés abrir?"
 
 
     elif intencion == "borrar_todos_los_recuerdos":
-        ESPERANDO_CONFIRMACION_BORRADO = True
+        sesion.esperando_confirmacion_borrado = True
         return "¿Estás seguro? Escribí 'confirmar borrado, S/Y' para eleminar toda la memoria de forma permanente."
-    
+
     elif intencion == "confirmar_borrado":
-        if ESPERANDO_CONFIRMACION_BORRADO:
+        if sesion.esperando_confirmacion_borrado:
             borrar_todos_los_recuerdos()
-            ESPERANDO_CONFIRMACION_BORRADO = False
+            sesion.esperando_confirmacion_borrado = False
             return "Todos los recuerdos han sido borrados."
         else:
             return "No hay ninguna acción de borrado pendiente de confirmación."
@@ -709,29 +730,6 @@ def procesar_comando(texto, assistant_name):
 
         return "Decime qué querés buscar."
 
-    elif intencion == "abrir":
-        objeto = extraer_objeto_apertura(texto)
-        tipo, valor = clasificar_objeto_apertura(objeto)
-
-        if tipo == "categoria":
-            programa = obtener_preferencia(valor)
-
-            if programa:
-                abrir_programa(programa)
-                return f"Abriendo {programa}..."
-            else:
-                return f"No sé qué {valor} usar todavía."
-            
-        elif tipo == "programa":
-            exito = abrir_programa(valor)
-
-            if exito: 
-                return f"Abriendo {valor}..."
-            else:
-                return f"Entendí que querías abrir {valor}, pero no pude ejecutarlo."
-
-        return "Entendí que querías abrir algo, pero no reconocí qué programa o categría era."
-
     elif intencion == "consultar_hora":
         ahora = datetime.datetime.now().strftime("%H:%M")
         return f"Son las {ahora}"
@@ -745,16 +743,15 @@ def procesar_comando(texto, assistant_name):
         return resultado
 
 
-    elif intencion == "mejorar_codigo": 
+    elif intencion == "mejorar_codigo":
         if DEBUG_MODE:
             print("DEBUG: entrando a mejorar_codigo")
-        import re 
         rutas = re.findall(r'[~/][\w/\.\-]+', texto_original)
-        if rutas: 
-            ruta = rutas[0].replace("~", "/home/bridget")
+        if rutas:
+            ruta = os.path.expanduser(rutas[0])
             contenido = leer_archivo(ruta)
             if contenido:
-                codigo_mejorado = consultar_llama(f"Reescribí este código Python completo con mejoras. Tu respuesta debe empezar DIRECTAMENTE con 'import' o 'def' o '#'. CERO explicaciones, CERO texto antes o después del código:\n\n{contenido}")
+                codigo_mejorado = consultar_llama(f"Reescribí este código Python completo con mejoras. Tu respuesta debe empezar DIRECTAMENTE con 'import' o 'def' o '#'. CERO explicaciones, CERO texto antes o después del código:\n\n{contenido}", sesion)
                 print(f"\n--- VERSIÓN DE DOLPHIN ---\n{codigo_mejorado}\n---")
 
                 print("\nConsultando al revisor experto...")
@@ -772,8 +769,8 @@ def procesar_comando(texto, assistant_name):
                     return "Código guardado."
                 return "Código no guardado."
             return f"No pude leer {ruta}."
-        else: 
-            codigo_mejorado = consultar_llama(f"Mejorá este código. Devolvé ÚNICAMENTE el código mejorado:\n\n{texto_original}")
+        else:
+            codigo_mejorado = consultar_llama(f"Mejorá este código. Devolvé ÚNICAMENTE el código mejorado:\n\n{texto_original}", sesion)
             print(f"\n--- CÓDIGO MEJORADO ---\n{codigo_mejorado}\n---")
             return "Revisá el código mejorado arriba."
     
@@ -781,7 +778,7 @@ def procesar_comando(texto, assistant_name):
         # Buscamos la última cosa que dijo Bridget en el historial.
         # Recorremos de atrás para adelante hasta encontrar un mensaje del asistente.
         ultima_respuesta = None
-        for mensaje in reversed(HISTORIAL_CONVERSACION):
+        for mensaje in reversed(sesion.historial):
             if mensaje["role"] == "assistant":
                 ultima_respuesta = mensaje["content"]
                 break
@@ -791,7 +788,7 @@ def procesar_comando(texto, assistant_name):
 
         # Clasificamos la nota: en una sola llamada al LLM obtenemos
         # título, categoría (carpeta) y tags. Reemplaza a generar_titulo.
-        clasificacion = cerebro.clasificar_nota(ultima_respuesta, consultar_llama)
+        clasificacion = cerebro.clasificar_nota(ultima_respuesta, lambda p: consultar_llama(p, sesion))
         titulo = clasificacion["titulo"]
         categoria = clasificacion["categoria"]
         tags = clasificacion["tags"]
@@ -858,12 +855,12 @@ def procesar_comando(texto, assistant_name):
 
     elif intencion == "ver_pantalla":
         descripcion = ver_pantalla()
-        return consultar_llama(f"Estoy viendo esto en mi pantalla: {descripcion}. Ayudame en base a eso.")
+        return consultar_llama(f"Estoy viendo esto en mi pantalla: {descripcion}. Ayudame en base a eso.", sesion)
 
     elif intencion == "buscar_web":
         resultados = buscar_web(texto_original)
         contexto = formatear_resultados(resultados)
-        return consultar_llama(f"El usuario preguntó: {texto_original}\n\nEncontré esta información en internet:\n{contexto}\n\nRespondé de forma concisa en 2-3 oraciones basándote en esa información.")
+        return consultar_llama(f"El usuario preguntó: {texto_original}\n\nEncontré esta información en internet:\n{contexto}\n\nRespondé de forma concisa en 2-3 oraciones basándote en esa información.", sesion)
 
     elif intencion == "analizar_archivo":
         ruta = extraer_ruta_archivo(texto_original)
@@ -920,29 +917,26 @@ def procesar_comando(texto, assistant_name):
             return f"No encontré archivo o carpeta en: {ruta}"
     
     elif intencion == "leer_archivo":
-        import re 
         rutas = re.findall(r'[~/][\w/\.\-]+', texto_original)
         if rutas:
-            ruta = rutas[0].replace("~", "/home/bridget")
+            ruta = os.path.expanduser(rutas[0])
             contenido = leer_archivo(ruta)
             if contenido:
-                return consultar_llama(f"El usuario te pidió: {texto_original}\n\nContenido del archivo:\n{contenido}")
-            else: 
+                return consultar_llama(f"El usuario te pidió: {texto_original}\n\nContenido del archivo:\n{contenido}", sesion)
+            else:
                 return f"No pude leer el archivo {ruta}."
         return "No encontré ninguna ruta de archivo en tu mensaje."
-    respuesta = consultar_llama(texto_original)
-    if respuesta: 
+
+    respuesta = consultar_llama(texto_original, sesion)
+    if respuesta:
         return respuesta
-    
-    
+
     return "no pude generar una respuesta"
 
 def escribir_archivo(ruta, contenido):
-    try: 
+    try:
         with open(ruta, "w", encoding="utf-8") as f:
             f.write(contenido)
-    except Exception as e: 
+        return True
+    except Exception:
         return False
-
-
-    return consultar_llama(texto_original)

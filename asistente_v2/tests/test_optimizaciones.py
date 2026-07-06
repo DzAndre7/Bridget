@@ -105,9 +105,9 @@ def test_historial_acotado(monkeypatch):
         return {"message": {"content": "ok"}}
     monkeypatch.setattr(brain.ollama, "chat", fake_chat)
 
-    brain.HISTORIAL_CONVERSACION.clear()
+    sesion = brain.Sesion()
     for i in range(50):
-        brain.consultar_llama(f"mensaje {i}")
+        brain.consultar_llama(f"mensaje {i}", sesion)
 
     # nunca supera el tope, aunque se hagan muchísimos turnos
-    assert len(brain.HISTORIAL_CONVERSACION) <= brain.MAX_HISTORIAL
+    assert len(sesion.historial) <= brain.MAX_HISTORIAL

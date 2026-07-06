@@ -63,10 +63,44 @@ En conjunto, el trabajo de código propio por turno pasó de **~320 ms a ~14 ms*
 9. **`requirements.txt`** — congelado desde el venv (no existía), para instalar
    el entorno de forma reproducible.
 
-## Red de pruebas (43 tests)
+## Segunda ronda: streaming + aislamiento + seguridad
+
+### Rapidez percibida
+10. **Streaming + TTS por frases** — `consultar_llama` transmite y va hablando por
+    frases mientras el modelo genera. La voz arranca a **~2.5 s** en vez de ~9.5 s.
+    Piezas: `consultar_llama_stream`, `frasear`, `voice.hablar_por_frases` (pipeline).
+
+### Aislamiento multi-cliente (API)
+11. **Estado de conversación por sesión** — se introdujo la clase `Sesion`
+    (historial + confirmaciones). Antes eran globales de módulo: con la API
+    expuesta, dos clientes concurrentes compartían historial y confirmaciones
+    (uno podía confirmar la tarea de otro). La API crea una `Sesion` por cliente
+    vía el header `X-Session-Id`; la CLI usa una sesión por defecto.
+
+### Seguridad (API)
+12. **Path traversal** — `/upload`, `/chat-archivo`, `/inbox/{nombre}` y
+    `/reportes/{nombre}` saneaban mal el nombre; ahora se reduce a `basename`
+    dentro del inbox (`_ruta_inbox`), imposible salir de la carpeta.
+13. **API key en tiempo constante** — `hmac.compare_digest` en vez de `!=`,
+    y fail-closed si no hay `BRIDGET_API_KEY` configurada.
+
+### Robustez y limpieza
+14. **`detectar_intencion` robusto a tildes** — helper `_contiene` que normaliza
+    las frases; antes las variantes con tilde nunca matcheaban (frágil).
+15. **Código muerto eliminado** — bloque `abrir` inalcanzable en `procesar_comando`,
+    reasignación tras `return` en `dataset_collector`, y `escribir_archivo` ahora
+    devuelve `True`/`False` correctamente.
+16. **Portabilidad** — rutas `~` con `os.path.expanduser` (no más `/home/bridget`
+    hardcodeado), y el `cleanup()` de `rick-web.sh` ahora mata ngrok de verdad
+    al hacer Ctrl-C (antes quedaba huérfano reservando el túnel).
+
+## Red de pruebas (58 tests)
 
 - `test_brain_logic.py` — parsing e intención (incluye el bug corregido).
 - `test_cerebro_logic.py` — nombres de archivo, construcción y clasificación de notas.
 - `test_memoria_semantica.py` — correctitud de la similitud coseno.
 - `test_optimizaciones.py` — equivalencia numpy, caché por mtime, ranking del
   cerebro en una pasada, blindaje de vault y tope de historial.
+- `test_streaming.py` — `frasear` y el contrato de `consultar_llama` con/sin sink.
+- `test_sesion_y_robustez.py` — aislamiento de sesión, robustez a tildes,
+  `escribir_archivo`, sin intención `abrir` muerta.

@@ -7,6 +7,18 @@ const API_CHAT_ARCHIVO_URL = "https://cling-immodest-case.ngrok-free.dev/chat-ar
 const API_SPEAK_URL = "https://cling-immodest-case.ngrok-free.dev/speak";
 const API_KEY = "kyy007351andy's#key";
 
+// Id de sesión persistente por navegador: la API lo usa para darte tu propia
+// conversación (historial + confirmaciones) sin mezclarse con otros clientes.
+const SESSION_ID = (() => {
+    let s = localStorage.getItem("bridget_session_id");
+    if (!s) {
+        s = (window.crypto && crypto.randomUUID) ? crypto.randomUUID()
+            : String(Date.now()) + "-" + Math.random().toString(16).slice(2);
+        localStorage.setItem("bridget_session_id", s);
+    }
+    return s;
+})();
+
 const chat = document.getElementById("chat");
 const inputArea = document.getElementById("input-area");
 const input = document.getElementById("input");
@@ -222,7 +234,8 @@ async function enviarAudio(audioBlob) {
         const res = await fetch(API_AUDIO_URL, {
             method: "POST",
             headers: {
-                "x-api-key": API_KEY
+                "x-api-key": API_KEY,
+                "x-session-id": SESSION_ID
             },
             body: formData
         });
@@ -311,7 +324,7 @@ async function cicloManosLibres() {
             formData.append("file", audioBlob, "audio.wav");
             const res = await fetch(API_AUDIO_URL, {
                 method: "POST",
-                headers: { "x-api-key": API_KEY },
+                headers: { "x-api-key": API_KEY, "x-session-id": SESSION_ID },
                 body: formData
             });
             const data = await res.json();
@@ -343,7 +356,7 @@ async function cicloManosLibres() {
         try {
             const res = await fetch(API_URL, {
                 method: "POST",
-                headers: { "Content-Type": "application/json", "x-api-key": API_KEY },
+                headers: { "Content-Type": "application/json", "x-api-key": API_KEY, "x-session-id": SESSION_ID },
                 body: JSON.stringify({ texto: texto_transcrito })
             });
             const data = await res.json();
@@ -503,7 +516,8 @@ async function enviar() {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
-                "x-api-key": API_KEY
+                "x-api-key": API_KEY,
+                "x-session-id": SESSION_ID
             },
             body: JSON.stringify(body)
         });
