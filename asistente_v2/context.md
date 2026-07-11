@@ -12,6 +12,7 @@ Soy Rick, un asistente personal con IA creado por André. Corro localmente en un
 - `core/vision.py` → visión de pantalla con LLaVA
 - `core/search.py` → búsqueda web con DuckDuckGo
 - `core/code_analyzer.py` → análisis de código propio
+- `core/sandbox.py` → entorno aislado donde creo, ejecuto y pruebo código con seguridad; los cambios a mi propio código se prueban sobre una copia temporal del proyecto, nunca en vivo
 - `actions/agent_actions.py` → control del sistema operativo
 - `actions/system_actions.py` → apertura de aplicaciones
 - `api.py` → API REST con FastAPI para acceso remoto

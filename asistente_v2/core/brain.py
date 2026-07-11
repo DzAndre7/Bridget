@@ -19,6 +19,11 @@ from core.code_analyzer import analizar_archivo, analizar_proyecto, guardar_repo
 from core.dataset_collector import guardar_interaccion, guardar_par_entrenamiento
 from core.code_reviewer import revisar_codigo
 from core.auditoria import auditar_proyecto
+from core.sandbox import (
+    ejecutar_codigo, probar_proyecto, probar_cambio_en_proyecto,
+    crear_y_probar, guardar_codigo_validado, verificar_sintaxis,
+    extraer_codigo,
+)
 
 DEBUG_MODE = False
 
@@ -182,6 +187,31 @@ def detectar_intencion(texto):
         "guarda esto en tu cerebro", "guardá esto en tu cerebro"
     ]):
         return "guardar_en_cerebro"
+
+    # Sandbox: van ANTES de "ejecutar_tarea" porque frases como
+    # "ejecutá este código" matchearían "ejecutá" y abrirían una app.
+    elif _contiene(texto, [
+        "creá y probá", "crea y prueba", "generá y probá", "genera y prueba",
+        "escribí y probá", "escribe y prueba", "programá y probá",
+        "crear y probar", "creá y testeá",
+    ]):
+        return "crear_y_probar_codigo"
+
+    elif _contiene(texto, [
+        "probá tu código", "prueba tu código", "probate",
+        "corré tus pruebas", "corre tus pruebas", "corré tus tests",
+        "corre tus tests", "ejecutá tus pruebas", "ejecuta tus pruebas",
+        "ejecutá tus tests", "ejecuta tus tests", "probá tus tests",
+    ]):
+        return "probar_proyecto_sandbox"
+
+    elif _contiene(texto, [
+        "probá este código", "prueba este código", "probá el código",
+        "prueba el código", "probá el archivo", "prueba el archivo",
+        "ejecutá este código", "ejecuta este código", "corré este código",
+        "corre este código", "en el sandbox", "en la sandbox",
+    ]):
+        return "probar_codigo_sandbox"
 
     elif _contiene(texto, [
         "ejecutá", "ejecuta", "hacé", "hace", "abrí", "abri", "mandá", "manda", "escribile", "enviá", "envia", "inicia", "iniciá"
@@ -742,6 +772,62 @@ def procesar_comando(texto, assistant_name, sesion=None):
         resultado = auditar_proyecto()
         return resultado
 
+    elif intencion == "crear_y_probar_codigo":
+        print("Creando código y probándolo en el sandbox (puede tomar varias vueltas)...")
+        resultado = crear_y_probar(texto_original, lambda p: consultar_llama(p, sesion))
+
+        if resultado["exito"]:
+            ruta = guardar_codigo_validado(resultado["codigo"], descripcion=texto_original)
+            salida = resultado["resultado"]["salida"].strip() or "(sin salida)"
+            return (
+                f"Listo: el código pasó sus pruebas en el sandbox al intento "
+                f"{resultado['intentos']} de {resultado['max_intentos']}. "
+                f"Lo guardé en {ruta}\n\n--- SALIDA ---\n{salida[:800]}"
+            )
+        return (
+            f"No logré un código que pase las pruebas después de "
+            f"{resultado['intentos']} intentos. Último error "
+            f"({resultado['resultado']['etapa']}):\n"
+            f"{resultado['resultado']['errores'][-800:]}"
+        )
+
+    elif intencion == "probar_proyecto_sandbox":
+        print("Copiando el proyecto a un sandbox y corriendo mis pruebas ahí...")
+        resultado = probar_proyecto()
+
+        if resultado["exito"]:
+            return f"Todas mis pruebas pasaron en el sandbox.\n\n{resultado['salida'][-600:]}"
+        if resultado["etapa"] == "timeout":
+            return f"Las pruebas tardaron demasiado y las corté.\n\n{resultado['errores'][-600:]}"
+        return (
+            f"Hay pruebas que fallan en el sandbox:\n\n"
+            f"{resultado['salida'][-1200:]}\n{resultado['errores'][-400:]}"
+        )
+
+    elif intencion == "probar_codigo_sandbox":
+        rutas = re.findall(r'[~/][\w/\.\-]+', texto_original)
+        if rutas:
+            ruta = os.path.expanduser(rutas[0])
+            codigo = leer_archivo(ruta)
+            if codigo is None:
+                return f"No pude leer {ruta}."
+        else:
+            # el código viene en el propio mensaje, después de los dos puntos
+            _, _, resto = texto_original.partition(":")
+            codigo = extraer_codigo(resto.strip())
+            if not codigo:
+                return "Pasame el código después de dos puntos, o la ruta de un archivo .py."
+
+        print("Ejecutando en el sandbox (proceso aislado, sin red)...")
+        resultado = ejecutar_codigo(codigo)
+
+        if resultado["exito"]:
+            salida = resultado["salida"].strip() or "(terminó bien, sin salida)"
+            return f"El código corrió bien en el sandbox.\n\n--- SALIDA ---\n{salida[:1000]}"
+        return (
+            f"El código falló en el sandbox (etapa: {resultado['etapa']}).\n\n"
+            f"{resultado['errores'][-1000:]}"
+        )
 
     elif intencion == "mejorar_codigo":
         if DEBUG_MODE:
@@ -762,6 +848,25 @@ def procesar_comando(texto, assistant_name, sesion=None):
                     print("(Par de entrenamiento guardado)")
                 else:
                     print("\n(El revisor externo no está disponible, seguí con la versión de dolphin.)")
+
+                # Antes de ofrecer guardar, probamos la mejora en el sandbox:
+                # si el archivo es parte del proyecto, corremos la suite entera
+                # sobre una copia temporal; si es externo, al menos la sintaxis.
+                print("\nProbando la mejora en el sandbox...")
+                prueba = probar_cambio_en_proyecto(ruta, codigo_mejorado)
+                if prueba["etapa"] == "fuera_del_proyecto":
+                    ok_sintaxis, error_sintaxis = verificar_sintaxis(codigo_mejorado)
+                    if ok_sintaxis:
+                        print("Sandbox: el archivo es externo al proyecto; la sintaxis es válida.")
+                    else:
+                        print(f"Sandbox: OJO, la versión nueva tiene un error de sintaxis: {error_sintaxis}")
+                elif prueba["exito"]:
+                    print("Sandbox: todas las pruebas del proyecto pasan con esta versión.")
+                else:
+                    print(
+                        f"Sandbox: OJO, esta versión ROMPE el proyecto (etapa: {prueba['etapa']}):\n"
+                        f"{prueba['salida'][-1200:]}\n{prueba['errores'][-400:]}"
+                    )
 
                 confirmacion = input("¿Querés guardar la versión de dolphin? (si/no): ")
                 if confirmacion.strip().lower() in ["si", "sí", "s", "yes"]:
