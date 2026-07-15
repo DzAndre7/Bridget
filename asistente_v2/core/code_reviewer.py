@@ -2,10 +2,11 @@ import os
 from groq import Groq
 from dotenv import load_dotenv
 
+from config import MODELO_REVISOR
+
 load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", ".env"))
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-MODELO_REVISOR = "llama-3.3-70b-versatile"
 
 def revisar_codigo(codigo, objetivo="mejorar y detectar errores"):
     if not GROQ_API_KEY:

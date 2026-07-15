@@ -2,12 +2,14 @@
 from config import ASSISTANT_NAME
 from dotenv import load_dotenv
 load_dotenv()
+from core import push as push_mod 
 from fastapi import FastAPI, HTTPException, Header, UploadFile, File
 from pydantic import BaseModel
-from core.brain import procesar_comando, Sesion
+from core.brain import procesar_comando, Sesion, _llm_directo
 from core.code_analyzer import listar_reportes, obtener_reporte
 from core.listen import escuchar_audio
 from core.voice import generar_audio
+from core import agenda
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from starlette.background import BackgroundTask
@@ -19,6 +21,10 @@ import tempfile
 
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# Recordatorios: el hilo avisador habla y notifica en la PC cuando vencen.
+# (El frontend además los muestra en el celular consultando GET /agenda.)
+agenda.iniciar_avisador()
 
 API_KEY = os.environ.get("BRIDGET_API_KEY", "")
 
@@ -32,10 +38,12 @@ def _autorizar(x_api_key):
 
 # --- Sesiones por cliente -------------------------------------------------
 # Cada cliente (identificado por el header X-Session-Id) tiene su propia
-# conversación y su propio estado de confirmación. Antes procesar_comando usaba
-# estado global de módulo: dos clientes concurrentes compartían historial y
-# confirmaciones. Sin header, se usa una sesión efímera por request (sin estado
-# cruzado, fail-safe).
+# conversación y su propio estado de confirmación, y ahora PERSISTE en disco
+# (core/sesiones.py): un reinicio del servidor no borra la charla. El caché en
+# memoria evita releer el JSON en cada request. Sin header, se usa una sesión
+# efímera por request (sin estado cruzado, fail-safe).
+from core import sesiones as sesiones_mod
+
 _MAX_SESIONES = 200
 _sesiones = {}
 
@@ -46,7 +54,11 @@ def _obtener_sesion(x_session_id):
     if sesion is None:
         if len(_sesiones) >= _MAX_SESIONES:
             _sesiones.clear()  # tope simple para no crecer sin límite
-        sesion = _sesiones[x_session_id] = Sesion()
+        sesion = _sesiones[x_session_id] = sesiones_mod.cargar_o_crear(x_session_id)
+    # Si la charla quedó vieja (horas sin actividad), se rota: digest +
+    # resumen a memoria semántica, historial limpio. Mismo modelo de
+    # memoria que la ventana de escritorio.
+    sesiones_mod.refrescar_si_vieja(sesion, funcion_llm=_llm_directo, assistant_name=ASSISTANT_NAME)
     return sesion
 
 
@@ -107,6 +119,62 @@ async def audio(file: UploadFile = File(...), x_api_key: str = Header(None), x_s
 @app.get("/")
 async def root():
     return FileResponse("static/index.html")
+
+
+# El service worker debe servirse desde la raíz: su alcance (scope) es el
+# directorio del que se sirve, y desde /static solo podría cachear /static.
+@app.get("/sw.js")
+async def service_worker():
+    return FileResponse("static/sw.js", media_type="application/javascript")
+
+
+@app.get("/manifest.json")
+async def manifest():
+    return FileResponse("static/manifest.json", media_type="application/manifest+json")
+
+
+@app.get("/historial")
+async def historial(x_api_key: str = Header(None), x_session_id: str = Header(None)):
+    """Lo que la UI necesita para no arrancar vacía: los mensajes de la
+    charla anterior (si la sesión rotó) y los de la charla en curso."""
+    _autorizar(x_api_key)
+    sesion = _obtener_sesion(x_session_id)
+    return {
+        "anterior": sesion.historial_anterior,
+        "actual": sesion.historial,
+    }
+
+class Suscripcion(BaseModel):
+    endpoint: str
+    keys: dict
+
+
+@app.post("/push/suscribir")
+async def push_suscribir(suscripcion: Suscripcion, x_api_key: str = Header(None)):
+    """El celu llama a esto una vez, cuando activás las notificaciones. Guarda
+    la suscripción para que el avisador de la agenda pueda mandar push después."""
+    _autorizar(x_api_key)
+    ok = push_mod.guardar_suscripcion(suscripcion.dict())
+    if not ok:
+        raise HTTPException(status_code=500, detail="No se pudo guardar la suscripción")
+    return {"mensaje": "Suscripción guardada"}
+
+
+@app.get("/push/vapid-public-key")
+async def push_vapid_public_key(x_api_key: str = Header(None)):
+    """El celu pide esto para saber con qué clave pública suscribirse."""
+    _autorizar(x_api_key)
+    return {"clave": os.environ.get("VAPID_PUBLIC_KEY", "")}
+
+@app.get("/agenda")
+async def listar_agenda(x_api_key: str = Header(None)):
+    """Recordatorios pendientes, para que el celular pueda avisarlos aunque
+    la voz suene en la PC."""
+    _autorizar(x_api_key)
+    return {"pendientes": [
+        {"id": r["id"], "texto": r["texto"], "cuando": r["cuando"]}
+        for r in agenda.pendientes()
+    ]}
 
 @app.get("/reportes")
 async def listar_reportes_endpoint(x_api_key: str = Header(None)):

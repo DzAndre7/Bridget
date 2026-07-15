@@ -3,7 +3,7 @@ import json
 import ollama
 from datetime import datetime
 from pathlib import Path
-from config import ASSISTANT_NAME
+from config import ASSISTANT_NAME, MODELO_CONVERSACION
 
 REPORTS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "reports")
 
@@ -120,7 +120,7 @@ Comenta sobre nombres, estructura, organización. Responde en español."""
 
     try:
         respuesta = ollama.chat(
-            model="dolphin-mistral",
+            model=MODELO_CONVERSACION,
             messages=[
                 {
                     "role": "system",

@@ -254,6 +254,29 @@
     if(e.key === 'Enter') enviarMensaje();
   });
 
+  // --- Persistencia: al abrir, mostramos la conversación de la sesión anterior ---
+  function agregarSeparador(texto){
+    var sep = document.createElement('div');
+    sep.className = 'sep-sesion';
+    sep.textContent = texto;
+    mensajesEl.appendChild(sep);
+  }
+
+  function cargarHistorialAnterior(){
+    if(!(window.pywebview && window.pywebview.api && window.pywebview.api.obtener_historial_anterior)) return;
+    window.pywebview.api.obtener_historial_anterior().then(function(mensajes){
+      if(!mensajes || !mensajes.length) return;
+      agregarSeparador('— sesión anterior —');
+      mensajes.forEach(function(m){
+        agregarMensaje(m.texto, m.quien);
+      });
+      agregarSeparador('— hoy —');
+    });
+  }
+  window.addEventListener('pywebviewready', cargarHistorialAnterior);
+  // por si pywebview ya estaba listo cuando corrió este script
+  if(window.pywebview && window.pywebview.api) cargarHistorialAnterior();
+
   // --- Reproducción de voz por mensaje (calcado de la web) ---
   function reproducirVoz(texto, btn){
     var estado = btn.dataset.estado;

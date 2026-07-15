@@ -30,6 +30,8 @@ import sys
 import tempfile
 from datetime import datetime
 
+from config import ASSISTANT_NAME
+
 # asistente_v2/ (la carpeta raíz del código del asistente)
 RUTA_PROYECTO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -46,6 +48,7 @@ LIMITE_SALIDA = 8000      # caracteres de stdout/stderr que conservamos
 _IGNORAR_EN_COPIA = shutil.ignore_patterns(
     "__pycache__", ".pytest_cache", "*.pyc", ".git",
     "reports", "inbox", "sandbox_workspace", "venv", "venv311",
+    "sesiones", "mejoras_pendientes", "mejoras_aplicadas", "mejoras_descartadas",
 )
 
 
@@ -412,7 +415,7 @@ def guardar_codigo_validado(codigo, descripcion="", carpeta=None):
     ruta = os.path.join(destino, f"script_{timestamp}.py")
 
     encabezado = (
-        f"# Generado por Bridget y probado en el sandbox el {datetime.now().isoformat()}\n"
+        f"# Generado por {ASSISTANT_NAME} y probado en el sandbox el {datetime.now().isoformat()}\n"
     )
     if descripcion:
         encabezado += f"# Pedido original: {descripcion}\n"

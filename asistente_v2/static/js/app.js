@@ -1,10 +1,15 @@
-const API_URL = "https://cling-immodest-case.ngrok-free.dev/chat";
-const API_AUDIO_URL = "https://cling-immodest-case.ngrok-free.dev/audio";
-const API_UPLOAD_URL = "https://cling-immodest-case.ngrok-free.dev/upload";
-const API_INBOX_URL = "https://cling-immodest-case.ngrok-free.dev/inbox";
-const API_DELETE_URL = "https://cling-immodest-case.ngrok-free.dev/inbox";
-const API_CHAT_ARCHIVO_URL = "https://cling-immodest-case.ngrok-free.dev/chat-archivo";
-const API_SPEAK_URL = "https://cling-immodest-case.ngrok-free.dev/speak";
+// URLs relativas: la página y la API las sirve el MISMO uvicorn, así que
+// funcionan igual por LAN, ngrok o localhost. Antes el dominio del túnel
+// estaba clavado acá y cambiarlo rompía la app.
+const API_URL = "/chat";
+const API_AUDIO_URL = "/audio";
+const API_UPLOAD_URL = "/upload";
+const API_INBOX_URL = "/inbox";
+const API_DELETE_URL = "/inbox";
+const API_CHAT_ARCHIVO_URL = "/chat-archivo";
+const API_SPEAK_URL = "/speak";
+const API_HISTORIAL_URL = "/historial";
+const API_AGENDA_URL = "/agenda";
 const API_KEY = "kyy007351andy's#key";
 
 // Id de sesión persistente por navegador: la API lo usa para darte tu propia
@@ -799,3 +804,159 @@ fileInput.addEventListener("change", (e) => {
 
   window.bridgetSacudir = function(){ sacudida = 0.35; setTimeout(resize, 360); };
 })();
+
+// ============ ARRANQUE: PWA + HISTORIAL + RECORDATORIOS ============
+
+// Service worker: cachea el caparazón para abrir al instante y permite
+// instalar Bridget como app ("Agregar a pantalla de inicio").
+if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("/sw.js").catch(() => {});
+}
+
+// Al abrir, la ventana nunca arranca vacía: mostramos la charla anterior
+// (si la sesión rotó por inactividad) y lo que va de la charla actual.
+// Mismo comportamiento que la ventana de escritorio.
+async function cargarHistorial() {
+    try {
+        const res = await fetch(API_HISTORIAL_URL, {
+            headers: { "x-api-key": API_KEY, "x-session-id": SESSION_ID }
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+
+        const render = (mensajes) => {
+            for (const m of mensajes) {
+                agregarMensaje(String(m.content || ""), m.role === "user" ? "usuario" : "rick");
+            }
+        };
+
+        if (data.anterior && data.anterior.length) {
+            const div = document.createElement("div");
+            div.className = "mensaje rick cargando";
+            div.textContent = "— de la charla anterior —";
+            chat.appendChild(div);
+            render(data.anterior);
+            if (data.actual && data.actual.length) {
+                const hoy = document.createElement("div");
+                hoy.className = "mensaje rick cargando";
+                hoy.textContent = "— hoy —";
+                chat.appendChild(hoy);
+            }
+        }
+        render(data.actual || []);
+        chat.scrollTop = chat.scrollHeight;
+    } catch (e) { /* sin red no hay historial, no es fatal */ }
+}
+cargarHistorial();
+
+// Vigía de recordatorios: consulta la agenda y avisa EN EL CELULAR cuando
+// vence uno (la voz de la PC suena allá; esto cubre cuando estás afuera).
+// Los ya avisados se recuerdan en localStorage para no repetir.
+const AVISADOS_KEY = "bridget_avisados";
+let agendaPendientes = [];
+
+function yaAvisado(id) {
+    try { return JSON.parse(localStorage.getItem(AVISADOS_KEY) || "[]").includes(id); }
+    catch (e) { return false; }
+}
+
+function marcarAvisadoLocal(id) {
+    try {
+        const lista = JSON.parse(localStorage.getItem(AVISADOS_KEY) || "[]");
+        lista.push(id);
+        localStorage.setItem(AVISADOS_KEY, JSON.stringify(lista.slice(-100)));
+    } catch (e) { /* localStorage lleno o bloqueado: solo repetiría el aviso */ }
+}
+
+async function refrescarAgenda() {
+    try {
+        const res = await fetch(API_AGENDA_URL, { headers: { "x-api-key": API_KEY } });
+        if (res.ok) agendaPendientes = (await res.json()).pendientes || [];
+    } catch (e) { /* sin red: seguimos con la última lista conocida */ }
+}
+
+function revisarVencidos() {
+    const ahora = Date.now();
+    for (const r of agendaPendientes) {
+        // 25 s de margen: aunque el servidor lo marque avisado justo antes
+        // del próximo refresco, el celular no se lo pierde
+        if (new Date(r.cuando).getTime() > ahora + 25000 || yaAvisado(r.id)) continue;
+        marcarAvisadoLocal(r.id);
+        agregarMensaje(`⏰ Recordatorio: ${r.texto}`, "rick");
+        if ("Notification" in window && Notification.permission === "granted") {
+            try { new Notification("Bridget ⏰", { body: r.texto, icon: "/static/icono-192.png" }); }
+            catch (e) { /* algunos navegadores móviles lo bloquean fuera de SW */ }
+        }
+    }
+}
+
+setInterval(refrescarAgenda, 60000);
+setInterval(revisarVencidos, 15000);
+refrescarAgenda();
+
+// El permiso de notificaciones se pide en el primer gesto del usuario
+// (los navegadores ignoran el pedido si no viene de una interacción).
+function pedirPermisoNotificaciones() {
+    if ("Notification" in window && Notification.permission === "default") {
+        Notification.requestPermission().catch(() => {});
+    }
+}
+send.addEventListener("click", pedirPermisoNotificaciones, { once: true });
+input.addEventListener("focus", pedirPermisoNotificaciones, { once: true });
+
+// --- Notificaciones push ---
+async function activarNotificaciones() {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+        alert("Este navegador no soporta notificaciones push.");
+        return;
+    }
+
+    const permiso = await Notification.requestPermission();
+    if (permiso !== "granted") {
+        alert("No diste permiso para notificaciones.");
+        return;
+    }
+
+    const registro = await navigator.serviceWorker.ready;
+
+    const resClave = await fetch("/push/vapid-public-key", {
+        headers: { "x-api-key": API_KEY },
+    });
+    const { clave } = await resClave.json();
+
+    const suscripcion = await registro.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(clave),
+    });
+
+    await fetch("/push/suscribir", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-api-key": API_KEY },
+        body: JSON.stringify(suscripcion.toJSON()),
+    });
+
+    alert("Notificaciones activadas.");
+}
+
+document.getElementById("btn-notificaciones")?.addEventListener("click", activarNotificaciones);
+
+function urlBase64ToUint8Array(base64String) {
+    const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+    const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+    const rawData = atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+    for (let i = 0; i < rawData.length; i++) {
+        outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
+}
+
+// --- Panel del editor: abrir/cerrar ---
+const btnPanel = document.getElementById('btn-panel');
+const panelEditor = document.getElementById('panel');
+const escenario = document.getElementById('escenario');
+
+btnPanel.addEventListener('click', () => {
+    const abierto = panelEditor.classList.toggle('abierto');
+    escenario.classList.toggle('empujado', abierto);
+});

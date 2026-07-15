@@ -3,6 +3,8 @@ import ollama
 import time
 from PIL import ImageGrab
 
+from config import MODELO_VISION
+
 def capturar_pantalla():
     captura = ImageGrab.grab()
     captura.save("/tmp/bridget_pantalla.png")
@@ -20,7 +22,7 @@ def ver_pantalla(pregunta="¿Qué ves en esta pantalla?"):
     imagen_base64 = capturar_pantalla()
 
     respuesta = ollama.chat(
-        model="llava",
+        model=MODELO_VISION,
         messages=[{
             "role": "user",
             "content": pregunta,

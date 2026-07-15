@@ -1,8 +1,17 @@
 # interfaz/ventana.py
-import webview
 import os
 import sys
 import json
+
+# QtWebEngine (el Chromium embebido que usa pywebview) intenta renderizar por
+# GPU; en esta máquina (NVIDIA + X11 sin GBM) cae a Vulkan y termina en
+# violación de segmento. Renderizamos por software: estable, y en una ventana
+# de chat no se nota. IMPORTANTE: debe setearse ANTES de importar webview,
+# que es lo que carga Qt/Chromium. setdefault permite pisarlo desde afuera
+# si algún día querés probar la GPU de nuevo.
+os.environ.setdefault("QTWEBENGINE_CHROMIUM_FLAGS", "--disable-gpu")
+
+import webview
 
 DIR = os.path.dirname(__file__)
 RUTA_HTML = os.path.join(DIR, "presencia.html")
@@ -13,12 +22,35 @@ RAIZ = os.path.dirname(DIR)  # sube de interfaz/ a asistente_v2/
 if RAIZ not in sys.path:
     sys.path.insert(0, RAIZ)
 
-from core.brain import procesar_comando
+from core.brain import procesar_comando, _llm_directo
+from core import sesiones
+from core import agenda
 from config import ASSISTANT_NAME
 
 
 class API:
     """Puente entre el JavaScript de la ventana y Python."""
+
+    def __init__(self):
+        # Sesión persistente: cada apertura de la ventana es un chat nuevo
+        # que recuerda el anterior (core/sesiones.py). Con funcion_llm, la
+        # charla anterior se resume a memoria semántica en segundo plano.
+        self.sesion = sesiones.abrir_sesion(
+            assistant_name=ASSISTANT_NAME, funcion_llm=_llm_directo
+        )
+        # Recordatorios: el hilo avisador habla y notifica cuando vencen.
+        agenda.iniciar_avisador()
+
+    def obtener_historial_anterior(self):
+        """El frontend llama a esto al abrir, para mostrar la conversación
+        de la sesión pasada y que la ventana nunca arranque vacía."""
+        mensajes = []
+        for mensaje in self.sesion.historial_anterior:
+            mensajes.append({
+                "quien": "user" if mensaje.get("role") == "user" else "bridget",
+                "texto": str(mensaje.get("content", "")),
+            })
+        return mensajes
 
     def guardar_config(self, config_json):
         try:
@@ -40,9 +72,9 @@ class API:
             return ""
 
     def enviar_mensaje(self, texto):
-        """El chat llama a esto. Pasa el mensaje al cerebro de Bridget y devuelve la respuesta."""
+        """El chat llama a esto. Pasa el mensaje al cerebro y devuelve la respuesta."""
         try:
-            respuesta = procesar_comando(texto, ASSISTANT_NAME)
+            respuesta = procesar_comando(texto, ASSISTANT_NAME, self.sesion)
             return respuesta
         except Exception as e:
             print(f"Error procesando mensaje: {e}")
@@ -120,7 +152,7 @@ class API:
 def abrir_ventana():
     api = API()
     ventana = webview.create_window(
-        title="Bridget",
+        title=ASSISTANT_NAME,
         url=RUTA_HTML,
         width=500,
         height=500,

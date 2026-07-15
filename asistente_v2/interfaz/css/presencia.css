@@ -344,3 +344,11 @@ html, body {
 #escenario.manoslibres #mensajes:hover {
   opacity: 1;  /* al pasar el mouse, se ve claro si querés leer */
 }
+/* Separador de sesiones: marca dónde terminó el chat anterior */
+.sep-sesion{
+  text-align:center;
+  color:#5c6773;
+  font-size:11px;
+  margin:10px 0 6px;
+  user-select:none;
+}

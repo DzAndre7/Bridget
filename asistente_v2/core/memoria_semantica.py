@@ -4,8 +4,9 @@ import numpy as np
 import ollama
 from datetime import datetime
 
+from config import MODELO_EMBEDDINGS, KEEP_ALIVE
+
 MEMORIA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "memoria_semantica.json")
-MODELO_EMBEDDINGS = "nomic-embed-text-v2-moe"
 
 # Caché en memoria: evita releer y reparsear el JSON (cientos de KB con los
 # embeddings) en cada turno de conversación, y precalcula la matriz de
@@ -15,7 +16,18 @@ _cache = {"mtime": None, "memoria": [], "con_emb": [], "matriz": None, "normas":
 
 def obtener_embedding(texto, tipo="document"):
     prefijo = "search_query: " if tipo == "query" else "search_document: "
-    respuesta = ollama.embeddings(model=MODELO_EMBEDDINGS, prompt=prefijo + texto)
+    # num_gpu=0: el embedder corre SIEMPRE en CPU (mismo criterio que llava
+    # en config.py). En los 6 GB de la GPU no entran dolphin3 y nomic a la
+    # vez: si el embedder pisa la GPU, desaloja al modelo de conversación y
+    # cada turno paga una recarga de 10-15 s (medido: recordar() corre antes
+    # de CADA respuesta). En CPU, embeber una consulta corta tarda
+    # milisegundos. keep_alive largo para no recargar el embedder tampoco.
+    respuesta = ollama.embeddings(
+        model=MODELO_EMBEDDINGS,
+        prompt=prefijo + texto,
+        options={"num_gpu": 0},
+        keep_alive=KEEP_ALIVE,
+    )
     return respuesta["embedding"]
 
 

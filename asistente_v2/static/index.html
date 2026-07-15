@@ -4,6 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content">
     <title>Bridget</title>
+    <!-- PWA: instalable desde el navegador del celular ("Agregar a pantalla
+         de inicio") — pantalla completa, ícono propio, arranque directo. -->
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#0a0f12">
+    <link rel="apple-touch-icon" href="/static/icono-192.png">
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
@@ -28,6 +33,9 @@
         <div class="control"><label>Núcleo <span id="v-core">100</span></label><input type="range" id="s-core" min="0" max="300" value="100" step="10"></div>
         <div class="control"><label>Achatamiento <span id="v-flat">78</span></label><input type="range" id="s-flat" min="40" max="100" value="78" step="2"></div>
         <div class="control"><label>Opacidad fondo <span id="v-opac">65</span></label><input type="range" id="s-opac" min="0" max="100" value="65" step="5"></div>
+        <div class="control">
+            <button id="btn-notificaciones" style="width:100%; padding:10px; background:rgba(40,140,150,0.3); border:0.5px solid rgba(60,200,210,0.45); color:rgb(90,210,220); border-radius:8px; cursor:pointer; font-family:monospace;">Activar notificaciones</button>
+        </div>
     </aside>
 
     <!-- Escenario: presencia de fondo + chat encima -->

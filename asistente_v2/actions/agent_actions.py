@@ -4,7 +4,7 @@ import ollama
 import os
 import glob
 from core.vision import capturar_pantalla, ver_pantalla
-from config import ASSISTANT_NAME
+from config import ASSISTANT_NAME, MODELO_RAPIDO, KEEP_ALIVE
 
 pyautogui.FAILSAFE = False
 pyautogui.PAUSE = 0.5
@@ -69,18 +69,20 @@ Describí en lenguaje natural y de forma concisa los pasos que vas a seguir para
 No ejecutes nada todavía, solo describí el plan.
 """
     respuesta = ollama.chat(
-        model="llama3.2",
-        messages=[{"role": "user", "content": prompt}]
+        model=MODELO_RAPIDO,
+        messages=[{"role": "user", "content": prompt}],
+        keep_alive=KEEP_ALIVE,
     )
     return respuesta["message"]["content"]
 
 def extraer_programa_con_llama(texto):
     respuesta = ollama.chat(
-        model="llama3.2",
+        model=MODELO_RAPIDO,
         messages=[{
             "role": "user",
-            "content": f"Extraé SOLO el nombre de la aplicación mencionada en este texto, una o dos palabras másximo, sin explicaciones, sin comandos, sin comillas. Solo el nombre. Texto: '{texto}'"
-        }]
+            "content": f"Extraé SOLO el nombre de la aplicación mencionada en este texto, una o dos palabras máximo, sin explicaciones, sin comandos, sin comillas. Solo el nombre. Texto: '{texto}'"
+        }],
+        keep_alive=KEEP_ALIVE,
     )
     resultado = respuesta["message"]["content"].strip().lower()
     if DEBUG_MODE: 

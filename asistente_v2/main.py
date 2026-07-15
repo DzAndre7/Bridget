@@ -2,9 +2,10 @@ import sys
 import datetime 
 sys.stdout.reconfigure(encoding="utf-8")
 
-from config import ASSISTANT_NAME
+from config import ASSISTANT_NAME, ASSISTANT_CREATOR
 import core.brain as brain
 from core.brain import procesar_comando, consultar_llama, usar_sink_de_frases
+from core import sesiones
 from core.memory import obtener_nombre_preferido, guardar_recuerdo
 from core.voice import hablar, hablar_interrumpible, hablar_por_frases
 from core.listen import escuchar
@@ -42,8 +43,8 @@ def obtener_saludo():
     else: 
         return "Buenas noches, decime qué hacemos hoy."
 
-def modo_voz():
-    print(f"{ASSISTANT_NAME}: Modo voz activado. Decí 'salir del modo voz' pàra volver.")
+def modo_voz(sesion=None):
+    print(f"{ASSISTANT_NAME}: Modo voz activado. Decí 'salir del modo voz' para volver.")
     hablar("Modo voz activado. Te escucho.")
     # streaming: las respuestas del LLM se hablan por frases a medida que se generan
     usar_sink_de_frases(hablar_por_frases)
@@ -64,13 +65,13 @@ def modo_voz():
             print(f"{ASSISTANT_NAME}: Modo voz desactivado.")
             break
 
-        respuesta = procesar_comando(texto, ASSISTANT_NAME)
+        respuesta = procesar_comando(texto, ASSISTANT_NAME, sesion)
         print(f"{ASSISTANT_NAME}: {respuesta}")
         _hablar_respuesta(respuesta)
 
-import threading 
+import threading
 
-def modo_voz_interrumpible():
+def modo_voz_interrumpible(sesion=None):
     from core.listen import escuchar_fragmento
     print(f"{ASSISTANT_NAME}: Modo voz activado. Decí 'salir del modo voz' para volver.")
     hablar("Modo voz activado. Te escucho.")
@@ -93,7 +94,7 @@ def modo_voz_interrumpible():
             print(f"{ASSISTANT_NAME}: Modo voz desactivado.")
             break
 
-        respuesta = procesar_comando(texto, ASSISTANT_NAME)
+        respuesta = procesar_comando(texto, ASSISTANT_NAME, sesion)
         print(f"{ASSISTANT_NAME}: {respuesta}")
 
         if "```" in respuesta:
@@ -125,13 +126,30 @@ def modo_voz_interrumpible():
         hilo_vigilancia.join(timeout=0.5)
 
 def main():
+    # Sesión persistente: chat nuevo que recuerda el anterior (core/sesiones.py).
+    # Con funcion_llm, la charla anterior se resume a memoria semántica en
+    # segundo plano (sesiones.indexar_charla).
+    sesion = sesiones.abrir_sesion(assistant_name=ASSISTANT_NAME, funcion_llm=brain._llm_directo)
+    # Recordatorios: el hilo avisador habla y notifica cuando vencen.
+    from core import agenda
+    agenda.iniciar_avisador()
+    if sesion.historial_anterior:
+        print("— de la sesión anterior —")
+        for mensaje in sesion.historial_anterior[-4:]:
+            quien = "Vos" if mensaje.get("role") == "user" else ASSISTANT_NAME
+            contenido = " ".join(str(mensaje.get("content", "")).split())
+            if len(contenido) > 120:
+                contenido = contenido[:120] + "…"
+            print(f"  {quien}: {contenido}")
+        print("— hoy —")
+
     saludo = obtener_saludo()
-    print(f"{ASSISTANT_NAME}: {saludo}")   
+    print(f"{ASSISTANT_NAME}: {saludo}")
 
     while True:
         # cada turno arranca sin sink; se instala solo para el chat normal de abajo
         usar_sink_de_frases(None)
-        nombre_usuario = obtener_nombre_preferido() or "André"
+        nombre_usuario = obtener_nombre_preferido() or ASSISTANT_CREATOR
         user_input = input(f"{nombre_usuario}: ")
 
         if user_input.lower().strip() == "escuchame": 
@@ -139,7 +157,7 @@ def main():
             print(f"{nombre_usuario} (voz): {user_input}")
 
         if user_input.lower().strip() in ["modo voz", "modo audio", "manos libres"]:
-            modo_voz_interrumpible()
+            modo_voz_interrumpible(sesion)
             continue
 
         if user_input.lower().strip() in ["activar voz", "activá voz", "modo texto", "silencio", "callate"]:
@@ -154,7 +172,7 @@ def main():
             break
 
         elif user_input.lower() in ["cerrar", "fin sesion", "fin sesión"]:
-            resumen = consultar_llama("Hacé un resumen breve de los temas importantes que hablamos en esta sesión. Si no hablamos de nada relevante, decilo.")
+            resumen = consultar_llama("Hacé un resumen breve de los temas importantes que hablamos en esta sesión. Si no hablamos de nada relevante, decilo.", sesion)
             print(f"{ASSISTANT_NAME}: {resumen}")
             hablar(resumen)
             confirmacion = input("Querés guardar este resumen en la memoria? (si/no): ")
@@ -166,7 +184,7 @@ def main():
 
         # streaming por frases solo si la voz está activada
         usar_sink_de_frases(hablar_por_frases if VOZ_ACTIVADA else None)
-        respuesta = procesar_comando(user_input, ASSISTANT_NAME)
+        respuesta = procesar_comando(user_input, ASSISTANT_NAME, sesion)
         if respuesta is None:
             respuesta = "No pude generar una respuesta."
         print(f"{ASSISTANT_NAME}: {respuesta}")
