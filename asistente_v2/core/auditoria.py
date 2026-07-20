@@ -1,6 +1,6 @@
-
 import os
-import time
+import logging
+from concurrent.futures import ThreadPoolExecutor
 
 from datetime import datetime
 from core.code_analyzer import obtener_archivos_python
@@ -13,7 +13,11 @@ def leer_codigo(ruta):
     try:
         with open(ruta, "r", encoding="utf-8") as f:
             return f.read()
-    except Exception:
+    except FileNotFoundError:
+        logging.error(f"El archivo {ruta} no existe.")
+        return None
+    except UnicodeDecodeError:
+        logging.error(f"Error al decodificar el archivo {ruta}.")
         return None
 
 def auditar_proyecto():
@@ -34,7 +38,7 @@ def auditar_proyecto():
 
         for archivo in archivos:
             nombre = os.path.basename(archivo)
-            print(f"Auditando: {nombre}")
+            logging.info(f"Auditando: {nombre}")
             codigo = leer_codigo(archivo)
 
             if not codigo:
@@ -47,7 +51,5 @@ def auditar_proyecto():
                 reporte.write(f"{revision}\n\n---\n\n")
             else:
                 reporte.write("(El revisor no estuvo disponible para este archivo.)\n\n---\n\n")
-
-            time.sleep(2)
 
     return f"Auditoría completada. Reporte guardado en: {ruta_reporte}"

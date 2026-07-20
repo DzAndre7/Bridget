@@ -679,6 +679,30 @@ def _cmd_mejorar_codigo(texto, texto_original, sesion, assistant_name):
         return "Código guardado."
     return "Código no guardado."
 
+def _cmd_anotar_nota(texto, texto_original, sesion, assistant_name):
+    contenido = intenciones.extraer_nota_directa(texto_original)
+    if not contenido:
+        return "Decime qué querés que anote, por ejemplo: anotá: tu pensamiento acá."
+
+    # Clasificamos TU texto tal cual, sin generar una respuesta conversacional
+    # sobre él. Trabajo interno => _llm_directo (no ensucia historial ni dataset).
+    clasificacion = cerebro.clasificar_nota(contenido, _llm_directo)
+    titulo = clasificacion["titulo"]
+    categoria = clasificacion["categoria"]
+    tags = clasificacion["tags"]
+
+    ruta = cerebro.guardar_nota(
+        titulo=titulo,
+        contenido=contenido,
+        carpeta=categoria,
+        tags=tags
+    )
+    if ruta:
+        texto_tags = (" con tags " + ", ".join(tags)) if tags else ""
+        return f"Anotado en «{categoria}» como «{titulo}»{texto_tags}."
+    else:
+        return "Quise anotarlo pero algo falló al escribir la nota."
+    
 
 def _cmd_guardar_en_cerebro(texto, texto_original, sesion, assistant_name):
     # Buscamos la última cosa que dijo el asistente en el historial.
@@ -938,6 +962,8 @@ MANEJADORES = {
     "analizar_proyecto": _cmd_analizar_proyecto,
     "analizar_con_filtro": _cmd_analizar_con_filtro,
     "leer_archivo": _cmd_leer_archivo,
+    "guardar_en_cerebro": _cmd_guardar_en_cerebro,
+    "anotar_nota": _cmd_anotar_nota,
 }
 
 

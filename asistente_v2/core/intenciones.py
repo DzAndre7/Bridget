@@ -190,6 +190,9 @@ def detectar_intencion(texto):
     elif texto in ["s", "y", "confirmar borrado"]:
         return "confirmar_borrado"
 
+    elif extraer_nota_directa(texto) is not None:
+        return "anotar_nota"
+
     elif _contiene(texto, [
         "guarda esto", "guardá esto", "guarda eso", "guardá eso",
         "anota esto", "anotá esto", "anota eso", "anotá eso",
@@ -552,6 +555,25 @@ def extraer_olvido(texto):
             inicio = texto_lower.find(frase) + len(frase)
             recuerdo = texto[inicio:].strip(" ,¿?.,;:!")
             return recuerdo
+    return None
+
+def extraer_nota_directa(texto):
+    """Detecta 'anotá: <texto>' / 'escribí: <texto>' / 'guardá: <texto>'
+    (con o sin tilde, mayúsculas variables) y devuelve el texto tal cual,
+    palabra por palabra. Es para capturar un pensamiento del usuario
+    textualmente, sin que pase por el modelo ni se convierta en la
+    respuesta de Bridget sobre el tema."""
+    texto = texto.strip()
+    texto_lower = texto.lower()
+
+    disparadores = ["nota","anota", "anotá", "escribi", "escribí", "guarda", "guardá"]
+
+    for disp in disparadores:
+        patron = disp + ":"
+        if texto_lower.startswith(patron):
+            contenido = texto[len(patron):].strip()
+            return contenido if contenido else None
+
     return None
 
 
