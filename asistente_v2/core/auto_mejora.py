@@ -25,6 +25,7 @@ import hashlib
 import json
 import os
 import shutil
+import subprocess
 from datetime import datetime
 
 from core import sandbox
@@ -52,6 +53,25 @@ def _leer(ruta):
             return f.read()
     except Exception:
         return None
+
+
+def _lint_ruff(codigo, rel):
+    """Chequeo estático rápido, antes del sandbox: pesca nombres indefinidos
+    e imports que faltan (F821/F401) en un segundo. Existe porque un módulo
+    sin tests puede pasar la suite entera del sandbox con un NameError
+    adentro si nada ejercita esa línea (así se coló una propuesta real que
+    usaba `urllib` sin importarlo)."""
+    try:
+        resultado = subprocess.run(
+            ["ruff", "check", "--quiet", "--select", "F821,F401,F811",
+             "--stdin-filename", rel, "-"],
+            input=codigo, capture_output=True, text=True, timeout=10,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        # sin ruff instalado no bloqueamos la propuesta por esto: el sandbox
+        # sigue siendo la validación real
+        return {"exito": True, "salida": ""}
+    return {"exito": resultado.returncode == 0, "salida": resultado.stdout}
 
 
 def elegir_archivo(ruta_proyecto=None):
@@ -135,6 +155,17 @@ def proponer_mejora(ruta_archivo, funcion_llm, ruta_proyecto=None, max_intentos=
                 f"contra {len(original)} del original): probablemente borraste "
                 "funcionalidad. Reescribí el archivo COMPLETO de nuevo, conservando "
                 "todas las funciones. Respondé SOLO con el código:\n\n" + original
+            )
+            continue
+
+        lint = _lint_ruff(codigo, rel)
+        if not lint["exito"]:
+            ultimo_motivo = "el linter encontró errores (nombres indefinidos o imports rotos)"
+            prompt = (
+                f"Tu versión de {rel} tiene errores que ruff detectó (nombres "
+                f"indefinidos, imports que faltan, etc.):\n\n{lint['salida']}\n\n"
+                "Corregí eso y devolvé el archivo COMPLETO de nuevo. "
+                "Respondé SOLO con el código."
             )
             continue
 

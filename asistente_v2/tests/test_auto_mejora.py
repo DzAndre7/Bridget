@@ -30,6 +30,18 @@ MODULO_ROTO = textwrap.dedent("""
         return resultado
 """).lstrip()
 
+# sumar() sigue andando bien (la única función que testea test_modulo.py),
+# pero formatear() usa un nombre que nunca se importó. La suite pasa igual
+# porque nada llama a formatear() — exactamente el hueco que dejó pasar la
+# propuesta real de core/search.py. Ruff lo detecta sin ejecutar nada.
+MODULO_CON_NOMBRE_INDEFINIDO = textwrap.dedent("""
+    def sumar(a, b):
+        return a + b
+
+    def formatear(resultado):
+        return nombre_que_no_existe.strip()
+""").lstrip()
+
 
 @pytest.fixture
 def proyecto(tmp_path, monkeypatch):
@@ -93,6 +105,16 @@ def test_propuesta_que_recorta_demasiado_se_rechaza(proyecto):
     )
     assert not resultado["exito"]
     assert "recorta" in resultado["motivo"]
+
+
+def test_propuesta_con_nombre_indefinido_se_rechaza(proyecto):
+    resultado = auto_mejora.proponer_mejora(
+        "core/modulo.py", lambda p: MODULO_CON_NOMBRE_INDEFINIDO,
+        ruta_proyecto=str(proyecto), max_intentos=1,
+    )
+    assert not resultado["exito"]
+    assert "linter" in resultado["motivo"]
+    assert auto_mejora.listar_mejoras(str(proyecto)) == []
 
 
 def test_archivo_fuera_del_proyecto_se_rechaza(proyecto):
