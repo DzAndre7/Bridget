@@ -2,8 +2,8 @@
 from config import ASSISTANT_NAME
 from dotenv import load_dotenv
 load_dotenv()
-from core import push as push_mod 
-from fastapi import FastAPI, HTTPException, Header, UploadFile, File
+from core import push as push_mod
+from fastapi import FastAPI, HTTPException, Header, Request, UploadFile, File
 from pydantic import BaseModel
 from core.brain import procesar_comando, Sesion, _llm_directo
 from core.code_analyzer import listar_reportes, obtener_reporte
@@ -13,6 +13,10 @@ from core import agenda
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from starlette.background import BackgroundTask
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
+from slowapi.util import get_remote_address
 
 import os
 import hmac
@@ -21,6 +25,24 @@ import tempfile
 
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+
+# El server se expone vía ngrok con una sola API key estática (ver
+# _autorizar): sin límite de requests, cualquiera con la URL puede golpear
+# el LLM sin freno. request.client.host no sirve solo para identificar
+# clientes reales porque ngrok reenvía todo desde localhost — usamos el
+# X-Forwarded-For que ngrok sí agrega.
+def _client_ip(request: Request) -> str:
+    reenviado = request.headers.get("x-forwarded-for")
+    if reenviado:
+        return reenviado.split(",")[0].strip()
+    return get_remote_address(request)
+
+
+limiter = Limiter(key_func=_client_ip, default_limits=["30/minute"])
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
 
 # Recordatorios: el hilo avisador habla y notifica en la PC cuando vencen.
 # (El frontend además los muestra en el celular consultando GET /agenda.)

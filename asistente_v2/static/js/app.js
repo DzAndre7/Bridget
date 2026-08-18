@@ -10,7 +10,20 @@ const API_CHAT_ARCHIVO_URL = "/chat-archivo";
 const API_SPEAK_URL = "/speak";
 const API_HISTORIAL_URL = "/historial";
 const API_AGENDA_URL = "/agenda";
-const API_KEY = "kyy007351andy's#key";
+
+// La key ya no viaja hardcodeada en este archivo: cualquiera que llegue a la
+// URL puede leer el código fuente servido, así que antes era pública de
+// hecho. Ahora se pide una vez por navegador y se guarda local (igual que
+// SESSION_ID); si la key guardada deja de valer, cargarHistorial() la
+// borra y vuelve a pedirla.
+const API_KEY = (() => {
+    let k = localStorage.getItem("bridget_api_key");
+    if (!k) {
+        k = window.prompt("Ingresá la clave de acceso a Bridget:") || "";
+        if (k) localStorage.setItem("bridget_api_key", k);
+    }
+    return k;
+})();
 
 // Id de sesión persistente por navegador: la API lo usa para darte tu propia
 // conversación (historial + confirmaciones) sin mezclarse con otros clientes.
@@ -896,6 +909,12 @@ async function cargarHistorial() {
         const res = await fetch(API_HISTORIAL_URL, {
             headers: { "x-api-key": API_KEY, "x-session-id": SESSION_ID }
         });
+        if (res.status === 401) {
+            localStorage.removeItem("bridget_api_key");
+            alert("Clave incorrecta. Volvé a intentar.");
+            location.reload();
+            return;
+        }
         if (!res.ok) return;
         const data = await res.json();
 
