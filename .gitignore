@@ -9,3 +9,9 @@ dataset_maestro.jsonl
 inbox/
 reports/
 preferences.json
+push_subscription.json
+sandbox_workspace/
+sesiones/
+mejoras_pendientes/
+mejoras_aplicadas/
+mejoras_descartadas/
