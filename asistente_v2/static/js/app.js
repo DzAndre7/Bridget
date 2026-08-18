@@ -75,6 +75,39 @@ function agregarMensaje(texto, tipo) {
     requestAnimationFrame(() => { chat.scrollTop = chat.scrollHeight; });
 }
 
+function agregarMensajeConSincronizar() {
+    const div = document.createElement("div");
+    div.className = "mensaje rick mensaje-error-sync";
+
+    const nombreDiv = document.createElement("div");
+    nombreDiv.className = "nombre";
+    nombreDiv.textContent = "RICK //";
+    div.appendChild(nombreDiv);
+
+    const textoDiv = document.createElement("div");
+    textoDiv.textContent = "Se cortó la conexión, pero es posible que ya haya respondido. Tocá para revisar:";
+    div.appendChild(textoDiv);
+
+    const btnSync = document.createElement("button");
+    btnSync.textContent = "🔄 Buscar respuesta";
+    btnSync.style.marginTop = "8px";
+    btnSync.addEventListener("click", async () => {
+        btnSync.textContent = "Buscando...";
+        btnSync.disabled = true;
+        await sincronizarConServidor();
+        // si después de sincronizar este mensaje de error sigue en pantalla,
+        // es que de verdad no hay nada nuevo: se lo dejamos saber
+        if (chat.contains(div)) {
+            btnSync.textContent = "No encontré nada nuevo. Reintentar";
+            btnSync.disabled = false;
+        }
+    });
+    div.appendChild(btnSync);
+
+    chat.appendChild(div);
+    requestAnimationFrame(() => { chat.scrollTop = chat.scrollHeight; });
+}
+
 async function reproducirRespuesta(texto, audioContainer) {
     try {
         // Reutilizar el botón ya existente (creado en agregarMensaje)
@@ -496,27 +529,24 @@ function escucharConVAD() {
 }
 
 // ============ CHAT ============
+let esperandoRespuesta = false;
+
 async function enviar() {
     const texto = input.value.trim();
     if (!texto) return;
-
     agregarMensaje(texto, "usuario");
     input.value = "";
-
     const cargando = document.createElement("div");
     cargando.className = "mensaje rick cargando";
     cargando.textContent = "procesando...";
     chat.appendChild(cargando);
-
+    esperandoRespuesta = true;
     try {
         let url = API_URL;
         let body = { texto };
-
-        // Si hay archivo seleccionado, usar endpoint de chat-archivo
         if (archivoSeleccionado) {
             url = API_CHAT_ARCHIVO_URL + "?nombre=" + encodeURIComponent(archivoSeleccionado);
         }
-
         const res = await fetch(url, {
             method: "POST",
             headers: {
@@ -527,17 +557,62 @@ async function enviar() {
             body: JSON.stringify(body)
         });
         const data = await res.json();
-        chat.removeChild(cargando);
+        if (chat.contains(cargando)) chat.removeChild(cargando);
         if (data.error) {
             agregarMensaje(`Error: ${data.error}`, "rick");
         } else {
             agregarMensaje(data.respuesta, "rick");
         }
+        esperandoRespuesta = false;
     } catch (e) {
-        chat.removeChild(cargando);
-        agregarMensaje("Error de conexión.", "rick");
+        if (chat.contains(cargando)) chat.removeChild(cargando);
+        agregarMensajeConSincronizar();
+        // esperandoRespuesta queda en true: no sabemos si el server llegó a
+        // responder. Se apaga recién cuando sincronizarConServidor() resuelve
+        // (por botón manual o solo al volver a la pantalla / recuperar red).
     }
 }
+async function sincronizarConServidor() {
+    console.log("sincronizando...");
+    try {
+        const res = await fetch(API_HISTORIAL_URL, {
+            headers: { "x-api-key": API_KEY, "x-session-id": SESSION_ID }
+        });
+        const data = await res.json();
+        console.log("historial recibido:", data);
+        const historialServidor = data.actual || [];
+
+        const mensajesRickVisibles = Array.from(chat.querySelectorAll(".mensaje.rick"))
+            .filter(el => !el.classList.contains("mensaje-error-sync") && !el.classList.contains("cargando"));
+            
+        const respuestasServidor = historialServidor.filter(m => m.role === "assistant");
+        console.log("respuestas en servidor:", respuestasServidor.length);
+
+        if (respuestasServidor.length > mensajesRickVisibles.length) {
+            console.log("¡hay mensajes faltantes! agregando...");
+            const faltantes = respuestasServidor.slice(mensajesRickVisibles.length);
+            chat.querySelectorAll(".mensaje-error-sync, .cargando").forEach(el => {
+                chat.removeChild(el);
+            });
+            faltantes.forEach(m => agregarMensaje(m.content, "rick"));
+            esperandoRespuesta = false;
+        }
+    } catch (e) {
+        console.log("ERROR en sincronización:", e);
+    }
+}
+
+// Si se corta la conexión justo cuando el usuario cambia de pantalla
+// (bloquea el celular, cambia de app), no hay forma de mostrarle un botón:
+// apenas vuelve a la pantalla, o el navegador recupera la red, reintentamos solos.
+document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && esperandoRespuesta) {
+        sincronizarConServidor();
+    }
+});
+window.addEventListener("online", () => {
+    if (esperandoRespuesta) sincronizarConServidor();
+});
 
 // ============ INBOX ============
 async function cargarArchivos() {
