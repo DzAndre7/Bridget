@@ -127,3 +127,45 @@ def test_recorda_que_guarda_aunque_diga_mi():
 
 def test_que_sabes_de_mi_lee_recuerdos():
     assert intenciones.detectar_intencion("que sabes de mi") == "leer_recuerdos"
+
+
+# ---------- convertir_documento / extraer_conversion ----------
+
+def test_intencion_convertir_documento():
+    texto = intenciones.normalizar_texto("convertí /home/bridget/nota.md a pdf")
+    assert intenciones.detectar_intencion(texto) == "convertir_documento"
+
+
+def test_convertir_va_antes_que_leer_archivo():
+    # sin la regla de conversión, esto caería en leer_archivo (tiene ".md")
+    assert intenciones.detectar_intencion("pasame /home/bridget/nota.md a pdf") == "convertir_documento"
+
+
+def test_extraer_conversion_ruta_y_formato():
+    ruta, extension = intenciones.extraer_conversion("convertí /home/bridget/nota.md a pdf")
+    assert ruta == "/home/bridget/nota.md"
+    assert extension == "pdf"
+
+
+def test_extraer_conversion_no_confunde_extension_de_entrada_con_destino():
+    # el archivo de entrada ya es .md: el formato de destino pedido es html,
+    # no debería "detectar" markdown por la propia extensión de la ruta.
+    ruta, extension = intenciones.extraer_conversion("convertí /home/bridget/nota.md a html")
+    assert extension == "html"
+
+
+def test_extraer_conversion_word_y_powerpoint_son_alias():
+    _, extension_word = intenciones.extraer_conversion("pasá /tmp/x.md a word")
+    _, extension_ppt = intenciones.extraer_conversion("pasá /tmp/x.md a powerpoint")
+    assert extension_word == "docx"
+    assert extension_ppt == "pptx"
+
+
+def test_extraer_conversion_sin_ruta_devuelve_nada():
+    assert intenciones.extraer_conversion("convertime esto a pdf") == (None, None)
+
+
+def test_extraer_conversion_sin_formato_reconocido():
+    ruta, extension = intenciones.extraer_conversion("convertí /tmp/x.md a algo raro")
+    assert ruta == "/tmp/x.md"
+    assert extension is None

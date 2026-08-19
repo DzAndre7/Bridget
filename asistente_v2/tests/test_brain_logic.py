@@ -49,6 +49,10 @@ def test_intencion_guardar_recuerdo():
 def test_intencion_desconocida_va_al_llm():
     assert brain.detectar_intencion(brain.normalizar_texto("contame un chiste")) == "desconocida"
 
+def test_intencion_convertir_documento():
+    texto = brain.normalizar_texto("convertí /home/bridget/nota.md a pdf")
+    assert brain.detectar_intencion(texto) == "convertir_documento"
+
 
 # ---------- extraer_recuerdo / extraer_olvido ----------
 

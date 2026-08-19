@@ -35,3 +35,19 @@ KEEP_ALIVE = "30m"
 # demanda típica). 8192 da aire; el costo es más memoria de KV cache
 # (~128 KiB por token), que en la GTX 1660 puede derramar un poco más a CPU.
 NUM_CTX = 8192
+
+# Sampling de la conversación (consultar_llama_stream). Ollama sin esto usa
+# su default (temperature 0.8, top_p 0.9, top_k 40, repeat_penalty 1.1),
+# que tiende a respuestas correctas pero previsibles. Subido un escalón para
+# que suene menos mecánico sin volverse incoherente: más variedad de
+# palabras y de qué token sigue (temperature/top_p/top_k arriba), y menos
+# muletillas repetidas de turno a turno (repeat_penalty arriba).
+# _llm_directo (clasificar intención, extraer datos, auto-mejora) NO usa
+# esto: ahí temperature=0 es intencional, la determinística es lo que
+# queremos al clasificar.
+OPCIONES_CONVERSACION = {
+    "temperature": 0.9,
+    "top_p": 0.95,
+    "top_k": 60,
+    "repeat_penalty": 1.15,
+}

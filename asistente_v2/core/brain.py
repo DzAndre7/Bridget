@@ -32,15 +32,16 @@ from core.intenciones import (
     detectar_intencion, extraer_consulta_busqueda, extraer_recuerdo,
     extraer_olvido, extraer_preferencia, extraer_objeto_apertura,
     clasificar_objeto_apertura, normalizar_nombre_programa,
-    extraer_ruta_archivo, extraer_tipo_analisis,
+    extraer_ruta_archivo, extraer_tipo_analisis, extraer_conversion,
 )
 from config import (
     ASSISTANT_NAME, ASSISTANT_CREATOR,
     MODELO_CONVERSACION, MODELO_RAPIDO, KEEP_ALIVE, NUM_CTX,
+    OPCIONES_CONVERSACION,
 )
 from core.memoria_semantica import recordar, guardar_recuerdo as guardar_recuerdo_semantico
 from core import memoria_auto
-from actions.system_actions import buscar_en_internet, abrir_programa
+from actions.system_actions import buscar_en_internet, abrir_programa, convertir_documento
 from core.memory import cargar_recuerdos, guardar_recuerdo, leer_recuerdos, olvidar_recuerdo, borrar_todos_los_recuerdos
 from core.preferences import cargar_preferencias, guardar_preferencia, obtener_preferencia
 from core.vision import ver_pantalla
@@ -319,7 +320,7 @@ def consultar_llama_stream(texto, sesion=None):
             messages=[{"role": "system", "content": sistema}] + sesion.historial[-MAX_HISTORIAL:],
             stream=True,
             keep_alive=KEEP_ALIVE,
-            options={"num_ctx": NUM_CTX},
+            options={"num_ctx": NUM_CTX, **OPCIONES_CONVERSACION},
         )
         for chunk in stream:
             parte = chunk["message"]["content"]
@@ -915,6 +916,19 @@ def _cmd_analizar_con_filtro(texto, texto_original, sesion, assistant_name):
         return f"No encontré archivo o carpeta en: {ruta}"
 
 
+def _cmd_convertir_documento(texto, texto_original, sesion, assistant_name):
+    ruta, extension = extraer_conversion(texto_original)
+    if not ruta:
+        return "No encontré qué archivo querés convertir. Ejemplo: 'convertí /ruta/archivo.md a pdf'."
+    if not extension:
+        return f"Encontré el archivo ({ruta}) pero no a qué formato lo querés pasar. Decime algo como 'a pdf' o 'a word'."
+
+    ok, resultado = convertir_documento(os.path.expanduser(ruta), extension)
+    if ok:
+        return f"Listo, lo convertí: {resultado}"
+    return f"No pude convertirlo: {resultado}"
+
+
 def _cmd_leer_archivo(texto, texto_original, sesion, assistant_name):
     rutas = re.findall(r'[~/][\w/\.\-]+', texto_original)
     if rutas:
@@ -962,6 +976,7 @@ MANEJADORES = {
     "analizar_proyecto": _cmd_analizar_proyecto,
     "analizar_con_filtro": _cmd_analizar_con_filtro,
     "leer_archivo": _cmd_leer_archivo,
+    "convertir_documento": _cmd_convertir_documento,
     "guardar_en_cerebro": _cmd_guardar_en_cerebro,
     "anotar_nota": _cmd_anotar_nota,
 }

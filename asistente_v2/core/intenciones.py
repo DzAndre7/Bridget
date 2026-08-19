@@ -387,6 +387,15 @@ def detectar_intencion(texto):
     ]):
         return "mejorar_codigo"
 
+    # Va ANTES que leer_archivo: un pedido de conversión también trae una
+    # ruta ("/nota.md") y caería ahí si no se chequea primero.
+    elif _contiene(texto, [
+        "convertí", "converti", "convertime", "convertilo", "convertila",
+        "pasame", "pasalo a", "pasala a", "pasá a", "pasa a",
+        "exportá a", "exporta a", "exportalo a", "exportala a",
+    ]) and extraer_conversion(texto)[0]:
+        return "convertir_documento"
+
     elif any(indicador in texto for indicador in  ["/home/", "/tmp/", "~/", ".py", ".txt", ".md", ".json"]):
         return "leer_archivo"
 
@@ -429,6 +438,7 @@ INTENCIONES_LLM = {
     "aplicar_mejora": "pide aplicar o aceptar una mejora que habías propuesto",
     "descartar_mejora": "pide descartar o rechazar una mejora que habías propuesto",
     "listar_sesiones": "pregunta qué chats o sesiones guardadas existen",
+    "convertir_documento": "pide convertir, exportar o pasar un archivo a otro formato (pdf, word, html, epub, etc.)",
     "conversar": "cualquier otra cosa: charla, preguntas generales, opiniones, pedidos que no encajan arriba",
 }
 
@@ -469,7 +479,8 @@ def clasificar_con_llm(texto, funcion_llm):
         "dame un análisis de los dos caminos\" -> pensar_profundo\n"
         "- \"¿cómo podría organizar mis estudios este año?\" -> pensar_profundo\n"
         "- \"¿por qué los humanos soñamos? explicámelo bien\" -> pensar_profundo\n"
-        "- \"¿cómo andás?\" -> conversar\n\n"
+        "- \"¿cómo andás?\" -> conversar\n"
+        "- \"pasame /home/bridget/informe.md a pdf\" -> convertir_documento\n\n"
         f"Mensaje del usuario: \"{texto}\"\n\n"
         "Respondé SOLO con el nombre exacto de la intención (por ejemplo: "
         "conversar), sin explicaciones ni puntuación."
@@ -589,6 +600,41 @@ def extraer_preferencia(texto):
                 valor = partes[1].strip(" ,¿?.,;:!")
                 return herramienta, valor
     return None, None
+
+
+# Formatos que pandoc sabe convertir, con la extensión de salida real
+# (así "word"/"powerpoint" también se reconocen, no solo la extensión).
+_FORMATOS_PANDOC = {
+    "pdf": "pdf",
+    "word": "docx", "docx": "docx",
+    "odt": "odt", "opendocument": "odt",
+    "html": "html",
+    "epub": "epub",
+    "markdown": "md", "md": "md",
+    "texto plano": "txt", "txt": "txt",
+    "rtf": "rtf",
+    "powerpoint": "pptx", "pptx": "pptx",
+    "latex": "tex",
+}
+
+
+def extraer_conversion(texto):
+    """De un pedido como 'convertí /ruta/archivo.md a pdf' saca
+    (ruta, extension_destino). (None, None) si no hay ninguna ruta en el
+    mensaje; (ruta, None) si hay ruta pero no se reconoce el formato pedido."""
+    rutas = re.findall(r'[~/][\w/\.\-]+', texto)
+    if not rutas:
+        return None, None
+    ruta = rutas[0]
+
+    # el formato se busca en lo que queda DESPUÉS de sacar la ruta: si no,
+    # la propia extensión del archivo de entrada (ej. ".md") se confundiría
+    # con el formato de destino pedido.
+    resto = texto.replace(ruta, "")
+    for palabra, extension in _FORMATOS_PANDOC.items():
+        if _contiene(resto, [palabra]):
+            return ruta, extension
+    return ruta, None
 
 
 def extraer_objeto_apertura(texto):
