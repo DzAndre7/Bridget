@@ -3,9 +3,12 @@ __pycache__/
 .env
 *.pyc
 memoria_semantica.json
+memoria_semantica.json.bak-*
 memory.json
 dataset.jsonl
+dataset.jsonl.bak-*
 dataset_maestro.jsonl
+agenda.json
 inbox/
 reports/
 preferences.json
@@ -15,3 +18,4 @@ sesiones/
 mejoras_pendientes/
 mejoras_aplicadas/
 mejoras_descartadas/
+assets/
